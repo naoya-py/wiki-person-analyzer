@@ -1,6 +1,8 @@
 # Wikipedia Biography Analyzer (wiki-nlp-analyzer)
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://example.com)  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)  ## 概要
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://example.com)  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+## 概要
 
 Wikipedia Biography Analyzer (WBA) は、Wikipediaの人物ページから情報を抽出し、分析・可視化するPythonプロジェクトです。
 Webスクレイピング、自然言語処理、データ分析、データ可視化の技術を組み合わせて、人物の生涯、業績、人間関係などを多角的に分析します。
