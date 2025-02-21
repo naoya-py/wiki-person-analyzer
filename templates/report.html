@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ data.person_name }} の分析レポート</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            color: #333;
+            background-color: #f8f8f8;
+        }
+        h1, h2, h3 {
+            color: #0056b3;
+        }
+        h1 {
+            font-size: 2.5em;
+            border-bottom: 2px solid #0056b3;
+            padding-bottom: 0.5em;
+        }
+        h2 {
+            font-size: 1.8em;
+            margin-top: 1.5em;
+            border-bottom: 1px solid #0056b3;
+            padding-bottom: 0.3em;
+        }
+        h3 {
+            font-size: 1.4em;
+            margin-top: 1.2em;
+        }
+        p {
+            margin-bottom: 1em;
+        }
+        ul {
+            list-style: disc;
+            margin-left: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1em;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .section {
+            margin-bottom: 30px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block; /* 画像の下に余白ができるのを防ぐ */
+            margin: 0 auto; /* 中央揃え */
+        }
+        .caption {
+            text-align: center;
+            margin-top: 0.5em;
+            font-style: italic;
+            color: #666;
+        }
+        .highlight { /* 例: 強調表示用のクラス */
+            font-weight: bold;
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>{{ data.person_name }} の分析レポート</h1>
+
+    <section class="section">
+        <h2>導入</h2>
+        <p>
+            このレポートは、Wikipediaの「<a href="https://ja.wikipedia.org/wiki/{{ data.person_name }}" target="_blank">{{ data.person_name }}</a>」のページを基に、
+            {{ data.person_name }} の生涯、業績、人間関係などを分析したものです。データはPythonのスクリプトを用いて自動的に収集・処理・可視化されています。
+        </p>
+        {% if data.basic_info %}
+            <p>{{ data.person_name }}は、{% if data.basic_info.生誕 %}{{data.basic_info.生誕}}に生まれ、{% endif %}{% if data.basic_info.死没 %}{{data.basic_info.死没}}に亡くなりました。{% endif %}{% if data.basic_info.職業 %}{{data.basic_info.職業}}として活躍しました。{% endif %}</p>
+        {% endif %}
+
+    </section>
+
+    <section class="section">
+        <h2>基本情報</h2>
+        {% if data.basic_info %}
+        <table>
+            {% for key, value in data.basic_info.items() %}
+            {% if key != "" %}
+                <tr>
+                <th>{{ key }}</th>
+                <td>{{ value }}</td>
+                </tr>
+            {% endif %}
+            {% endfor %}
+        </table>
+        {% else %}
+        <p>基本情報はありません。</p>
+        {% endif %}
+    </section>
+
+    <section class="section">
+        <h2>年表</h2>
+        {% if data.timeline %}
+        <img src="timeline.png" alt="年表">
+        <p class="caption">図1: {{ data.person_name }} の生涯における主要な出来事の年表</p>
+
+        <h3>主要な出来事</h3>
+        <ul>
+            {% for item in data.timeline %}
+                {% if loop.index <= 10 %}
+                <li>{{ item.year }}年: {{ item.event }}</li>
+                {% endif %}
+            {% endfor %}
+        </ul>
+        {% else %}
+            <p>年表データはありません。</p>
+        {% endif %}
+    </section>
+
+    <section class="section">
+        <h2>関係ネットワーク</h2>
+        {% if data.network and data.network.related_persons %}
+        <img src="network_{{ data.person_name }}.png" alt="関係ネットワーク図">
+        <p class="caption">
+            図2: {{ data.person_name }} と関係のある人物のネットワーク図。
+            ノードは人物を表し、エッジは人物間の関係を表します。
+            {% if data.network.centrality %}
+                ノードの大きさは次数中心性（関係の数）を表しています。
+            {% endif %}
+        </p>
+
+        <h3>関係のある人物</h3>
+            <ul>
+                {% for person in data.network.related_persons %}
+                <li>{{ person }}</li>
+                {% endfor %}
+            </ul>
+
+        <h3>関係の種類</h3>
+            {% for relation, persons in data.network.relations_by_type.items() %}
+                <h4>{{ relation }}</h4>
+                <ul>
+                {% for person in persons %}
+                    <li>{{ person }}</li>
+                {% endfor %}
+                </ul>
+            {% endfor %}
+    {% else %}
+    <p>関係ネットワークデータがありません</p>
+    {% endif %}
+
+    </section>
+
+    <section class="section">
+        <h2>ワードクラウド</h2>
+        {% if data.wordcloud_image %}
+            <img src="wordcloud.png" alt="ワードクラウド" width="600">
+            <p class="caption">図3: {{ data.person_name }} のWikipediaページ本文から作成したワードクラウド</p>
+            <p>このワードクラウドは、{{ data.person_name}}のWikipedia日本語版ページの本文に頻出する単語を可視化したものです。
+            単語の大きさは出現頻度を表しています。
+            </p>
+        {% else %}
+            <p>ワードクラウドは生成されませんでした。</p>
+        {% endif %}
+    </section>
+
+    <section class="section">
+        <h2>結論</h2>
+        <p>
+            (ここに分析結果のまとめ、考察などを記述)
+        </p>
+    </section>
+</body>
+</html>

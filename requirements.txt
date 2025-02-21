@@ -1,0 +1,10 @@
+requests
+beautifulsoup4
+pandas
+matplotlib
+networkx
+wordcloud
+Jinja2
+japanize_matplotlib
+seaborn
+loguru
