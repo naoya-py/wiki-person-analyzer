@@ -1,138 +1,110 @@
-from core.analyzer import Analyzer
-import pandas as pd
+from core.scraper import Scraper
+from core.data_processor import DataProcessor
+# from core.analyzer import Analyzer
 import json
-from utils.logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger #  logger.py (loguru 版) の import に変更
 import logging
 import sys
 
-configure_logging(level=logging.INFO, stream=sys.stdout) # debug_analyzerはINFO
-logger = get_logger(__name__)
-logger.info("debug_analyzer.py の実行を開始します。")
+configure_logging(level="DEBUG", stream=sys.stdout) #  logger.py (loguru 版) の configure_logging を使用
+logger = get_logger(__name__) #  logger.py (loguru 版) の get_logger を使用
 
-def convert_numpy_int(obj):
-    if isinstance(obj, pd.Series) or isinstance(obj, pd.DataFrame):
-        return obj.to_dict()
-    if isinstance(obj, (int, str, list, dict, float, bool)):
-        return obj
-    if hasattr(obj, 'tolist'):
-        return obj.tolist()
-    return str(obj)
 
-def display_tfidf_results(tfidf_results): # TF-IDF 結果表示関数 (修正版)
+def debug_analyze_persona(page_title):  # 関数化 # 追記
     """
-    TF-IDF 分析結果を見やすく整形して表示する。
-    年ごとの結果を整形して表示するように修正。
+    analyzer.py の人物像分析機能 (analyze_persona) をデバッグする関数 (debug_analyzer.py).
 
     Args:
-        tfidf_results (dict): analyze_text_features() の結果 (dict: {"tfidf_scores": {year: {term: tfidf_score, ...}, ...}})
+        page_title (str): Wikipedia ページタイトル
     """
-    print("\n--- TF-IDF 分析結果 ---")
-    if not tfidf_results or not tfidf_results["tfidf_scores"]: #  結果が空の場合 # 追記
-        print("TF-IDF 分析結果は空です。") # 追記
-        return # 追記
+    logger.info(f"人物像分析デバッグ開始: ページタイトル = {page_title}") #  loguru の logger を使用 # 修正
 
-    tfidf_scores = tfidf_results["tfidf_scores"] # TF-IDF スコアを取得 # 追記
+    try:
+        # 1. スクレイピング
+        scraper = Scraper(page_title=page_title)
+        scraper.fetch_page_data()
+        infobox_data = scraper.extract_infobox_data()
+        text_data = scraper.extract_text(
+            normalize_text=True, remove_exclude_words=True
+        )  # テキスト整形 + 除外ワード除去あり
+        image_data = scraper.extract_image_data()
+        categories = scraper.extract_categories()
 
-    for year, term_scores in tfidf_scores.items(): # 年ごとにループ # 変更
-        print(f"\n**{year}年のTF-IDF上位ワード:**") # 年の見出しを表示 # 変更
-        if not term_scores: #  年ごとの結果が空の場合 # 追記
-            print("  (該当する単語はありません)") # 追記
-            continue # 追記
+        logger.debug("スクレイピングデータ:") #  loguru の logger を使用 # 修正
+        logger.debug(f"infobox_data: {infobox_data}") #  loguru の logger を使用 # 修正
+        logger.debug(
+            f"text_data: [first section heading] {text_data['headings_and_text'][0].get('heading_text', '見出しなし')}, [first section text (一部)] {text_data['headings_and_text'][0]['text_content'][:100]}..."
+        ) #  loguru の logger を使用 # 修正
+        logger.debug(f"image_data: {image_data}") #  loguru の logger を使用 # 修正
+        logger.debug(f"categories: {categories}") #  loguru の logger を使用 # 修正
 
-        sorted_terms = sorted(term_scores.items(), key=lambda item: item[1], reverse=True) # TF-IDF スコアで降順ソート
-        for term, score in sorted_terms[:10]:  # 上位10ワードを表示
-            print(f"  - {term}: {score:.4f}") #  スコアを小数点以下4桁で表示
+        # 2. データプロセッサー
+        processor = DataProcessor(
+            infobox_data=infobox_data,
+            text_data=text_data,
+            image_data=image_data,
+            categories=categories,
+            page_title=page_title,
+        )
+        logger.debug(f"image_dataの内容 (process_data() 呼び出し前): {image_data}") #  loguru logger を使用 # 追加
+        processor.process_data()
+
+        logger.debug("データプロセッサー処理後データ:") #  loguru の logger を使用 # 修正
+        logger.debug(
+            f"df_basic: {processor.df_basic.to_json(orient='records', indent=2, force_ascii=False)}"
+        ) #  loguru の logger を使用 # 修正
+        logger.debug(
+            f"entities: {json.dumps(processor.entities, ensure_ascii=False, indent=2)}"
+        ) #  loguru の logger を使用 # 修正
+        logger.debug(
+            f"relations: {processor.extract_relations()}"
+        ) #  loguru の logger を使用 # 修正
+        logger.debug(
+            f"df_timeline: {processor.df_timeline.to_json(orient='records', indent=2, force_ascii=False)}"
+        ) #  loguru の logger を使用 # 修正
+
+        # 3. Analyzer (analyzer.py 実装後に uncomment) # 修正
+        # analyzer = Analyzer(wikipedia_url=scraper.wikipedia_url) #  Analyzer オブジェクト作成
+        # combined_text_data = processor.concatenate_text_data() # テキストデータ結合
+        # ranking = analyzer.analyze_word_frequency(combined_text_data) # 頻度分析
+        # persona_keywords = analyzer.extract_persona_keywords(ranking) # 人物像キーワード抽出
+        # persona_description = "、".join(persona_keywords)
+
+        # logger.info("\n--- 頻度分析ランキング ---") #  info ログ出力 # 追記
+        # for i, (word, count) in enumerate(ranking[:10]): # 上位10件を表示
+        #     logger.info(f"{i+1}位: {word} ({count}回)") #  info ログ出力 # 追記
+
+        # logger.info("\n--- 人物像キーワード ---") #  info ログ出力 # 追記
+        # logger.info(persona_description) #  info ログ出力 # 追記
+
+        logger.info("\n--- 基本情報 DataFrame (JSON) ---") #  info ログ出力 # 追記
+        logger.info(
+            processor.df_basic.to_json(
+                orient="records", indent=2, force_ascii=False
+            )
+        ) #  info ログ出力 # 追記
+
+        logger.info("\n--- 固有表現抽出結果 (JSON) ---") #  info ログ出力 # 追記
+        logger.info(
+            json.dumps(processor.entities, ensure_ascii=False, indent=2)
+        ) #  info ログ出力 # 追記
+
+        logger.info("\n--- 人物関係抽出結果 ---") #  info ログ出力 # 追記
+        logger.info(processor.extract_relations()) #  info ログ出力 # 追記
+
+        logger.info("\n--- 年表抽出結果 (JSON) ---") #  info ログ出力 # 追記
+        logger.info(
+            processor.df_timeline.to_json(
+                orient="records", indent=2, force_ascii=False
+            )
+        ) #  info ログ出力 # 追記
+
+        logger.info(f"人物像分析デバッグ完了: ページタイトル = {page_title}") #  loguru の logger を使用 # 修正
+
+    except Exception as e:
+        logger.exception(f"人物像分析デバッグ中にエラーが発生しました: {e}") #  loguru の exception() で例外情報を出力 # 修正
+
 
 if __name__ == "__main__":
-    # logger設定 (logger.py が必要)
-    # logger.basicConfig(level=logger.DEBUG) #  basicConfig は logger.py で行う
-
-    configure_logging(level=logging.INFO, stream=sys.stdout) #  ロギングレベルを INFO に設定
-    logger = get_logger(__name__)
-
-    #  基本情報データフレーム (例)
-    basic_info_data = {
-        "name": ["アルベルト・アインシュタイン"],
-        "birth_date": ["1879年3月14日"],  # 日付文字列
-        "death_date": ["1955年4月18日"],  # 日付文字列
-        "nationality": ["ドイツ、スイス、アメリカ"],
-        "field": ["理論物理学"]
-    }
-    df_basic = pd.DataFrame(basic_info_data)
-
-    # 年表データフレーム (例)
-    timeline_data = {
-        "year": [1905, 1915, 1921, 1933, 1955, 1905, 1905, 1905, 1905, 1915],  # 年 (数値)
-        "date": ["1905年", "1915年", "1921年", "1933年", "1955年", "3月", "5月", "6月", "9月", "11月"],  # 日付
-        "event": [
-            "奇跡の年",  # イベント内容
-            "一般相対性理論発表",
-            "ノーベル物理学賞受賞",
-            "プリンストン高等研究所へ",
-            "死去",
-            "光量子仮説",
-            "ブラウン運動の理論",
-            "特殊相対性理論",
-            "質量とエネルギーの等価性",  # E=mc^2
-            "一般相対性理論",
-        ],
-    }
-    df_timeline = pd.DataFrame(timeline_data)
-
-    # 関係ネットワークデータフレーム (例)
-    network_data = {
-        "source": ["アルベルト・アインシュタイン", "アルベルト・アインシュタイン", "アルベルト・アインシュタイン", "マリー・キュリー", "ニールス・ボーア"],  # source
-        "target": ["エルザ・アインシュタイン", "ミレヴァ・マリッチ", "ハンス・アルベルト・アインシュタイン", "アルベルト・アインシュタイン", "アルベルト_アインシュタイン"],  # target
-        "relation": ["配偶者", "元配偶者", "息子", "友人", "友人"],  # 関係性
-    }
-    df_network = pd.DataFrame(network_data)
-
-    analyzer = Analyzer(df_basic, df_timeline, df_network)
-
-    # 基本情報分析
-    try:  # try-except ブロックを追加
-        basic_analysis_result = analyzer.analyze_basic_info()
-        print("\n--- 基本情報分析結果 ---")
-        print(json.dumps(basic_analysis_result, ensure_ascii=False, indent=2, default=convert_numpy_int))
-    except Exception as e:  # 例外処理
-        logger.error(f"基本情報分析でエラーが発生しました: {e}")
-
-        # 年表分析 (全期間)
-    try: #  try-except ブロックを追加
-        timeline_analysis_result_full = analyzer.analyze_timeline()
-        print("\n--- 年表分析結果 (全期間) ---")
-        print(json.dumps(timeline_analysis_result_full, ensure_ascii=False, indent=2, default=convert_numpy_int))
-    except Exception as e: #  例外処理
-        logger.error(f"年表分析 (全期間) でエラーが発生しました: {e}") #  エラーログ出力
-
-
-    # 年表分析 (1900年〜1920年)
-    try: #  try-except ブロックを追加
-        timeline_analysis_result_period = analyzer.analyze_timeline(start_year=1900, end_year=1920)
-        print("\n--- 年表分析結果 (1900年〜1920年) ---")
-        print(json.dumps(timeline_analysis_result_period, ensure_ascii=False, indent=2, default=convert_numpy_int))
-    except Exception as e: #  例外処理
-        logger.error(f"年表分析 (1900年〜1920年) でエラーが発生しました: {e}") #  エラーログ出力
-
-    # 関係ネットワーク分析 (全体)
-    try: #  try-except ブロックを追加
-        network_analysis_result = analyzer.analyze_network()
-        print("\n--- 関係ネットワーク分析結果 (全体) ---")
-        print(json.dumps(network_analysis_result, ensure_ascii=False, indent=2, default=convert_numpy_int))  # グラフオブジェクトはstrに変換してJSON出力
-    except Exception as e: #  例外処理
-        logger.error(f"関係ネットワーク分析 (全体) でエラーが発生しました: {e}") #  エラーログ出力
-
-    # 関係ネットワーク分析 (特定の人物: アルベルト・アインシュタイン)
-    try: #  try-except ブロックを追加
-        network_analysis_result_person = analyzer.analyze_network(target_person="アルベルト・アインシュタイン")
-        print("\n--- 関係ネットワーク分析結果 (特定の人物: アルベルト・アインシュタイン) ---")
-        print(json.dumps(network_analysis_result_person, ensure_ascii=False, indent=2, default=convert_numpy_int))
-    except Exception as e: #  例外処理
-        logger.error(f"関係ネットワーク分析 (特定の人物: アルベルト・アインシュタイン) でエラーが発生しました: {e}") #  エラーログ出力
-
-    # テキスト特徴量分析 (TF-IDF)
-    try: #  try-except ブロックを追加
-        text_features_analysis_result = analyzer.analyze_text_features()  # テキスト特徴量分析を実行
-        display_tfidf_results(text_features_analysis_result) #  TF-IDF 結果表示関数を実行
-    except Exception as e: #  例外処理
-        logger.error(f"テキスト特徴量分析でエラーが発生しました: {e}") #  エラーログ出力
+    page_title = "アルベルト・アインシュタイン"  # 例: アルベルト・アインシュタイン
+    debug_analyze_persona(page_title)  # debug_analyze_persona 関数を実行 # 追記

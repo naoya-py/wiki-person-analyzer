@@ -7,7 +7,7 @@ from utils.logger import configure_logging, get_logger
 import logging
 import sys
 
-configure_logging(level=logging.INFO, stream=sys.stdout)
+configure_logging(level=logging.DEBUG, stream=sys.stdout)
 logger = get_logger(__name__)
 
 
@@ -122,9 +122,19 @@ class DataProcessor:
                     logger.warning(f"基本情報に不明なキーがあります: {key}")  # 警告レベルに変更
 
         # 画像データの追加
-        if self.image_data:
-            formatted_basic_info["image_url"] = self.image_data[0]["url"]
-            formatted_basic_info["image_caption"] = self.image_data[0]["caption"]
+        if self.image_data:  # image_data が空リストでないか確認
+            if "image_url" in self.image_data[0]:  # image_url キーが存在するか確認
+                formatted_basic_info["image_url"] = self.image_data[0]["image_url"]
+            else:
+                formatted_basic_info["image_url"] = None  # キーが存在しない場合は None を設定
+
+            if "alt_text" in self.image_data[0]:  # alt_text キーが存在するか確認
+                formatted_basic_info["image_caption"] = self.image_data[0]["alt_text"]
+            else:
+                formatted_basic_info["image_caption"] = None  # キーが存在しない場合は None を設定
+        else:
+            formatted_basic_info["image_url"] = None  # image_data が空リストの場合は None を設定
+            formatted_basic_info["image_caption"] = None  # image_data が空リストの場合は None を設定
 
         # カテゴリ
         formatted_basic_info["categories"] = self.categories
@@ -156,20 +166,64 @@ class DataProcessor:
                 return f"{japanese_name}/{english_name}"
         return name
 
+    def concatenate_text_data(self) -> str:
+        """text_data (抽出された本文と見出し) を一つの文字列に連結する。"""
+        logger.info("text_data を連結して一つのテキストデータを作成")
+        concatenated_text = ""
+
+        if not self.text_data or not self.text_data[
+            'headings_and_text']:  # text_data または headings_and_text が None/空の場合は空文字列を返す
+            logger.warning("text_data が空です。空文字列を返します。")
+            return ""
+
+        for section in self.text_data['headings_and_text']:
+            logger.debug(f"concatenate_text_data: section の内容: {section}")  # 追加: section の内容をログ出力 # 追加
+            heading_text = section.get('heading_text')  # 修正: .get('heading_text') を使用 (KeyError 回避)
+            text_content = section['text_content']  # text_content は必須キーと想定
+
+            if heading_text:  # 見出しがある場合
+                concatenated_text += f"## {heading_text}\n\n{text_content}\n\n"  # Markdown形式
+            else:  # 見出しがない場合 (概要など)
+                concatenated_text += f"{text_content}\n\n"  # 見出しなしで本文のみ連結
+
+        logger.debug(f"連結後のテキストデータ (冒頭100文字): {concatenated_text[:100]}")  # 連結後テキストデータ (冒頭100文字) をログ出力
+        logger.info("テキストデータの連結処理完了")
+        return concatenated_text
+
+    def concatenate_text_data_recursive(self, sub_sections): #  再帰呼び出し用ヘルパー関数を追加 # 追記
+        """
+        (内部用) サブセクションのテキストデータを再帰的に結合するヘルパー関数.
+
+        Args:
+            sub_sections (List[Dict]): サブセクションの構造化データ.
+
+        Returns:
+            str: 結合されたテキストデータ.
+        """
+        combined_text = ""
+        for section in sub_sections: #  sub_sections をループ処理 # 修正
+            heading_text = section["heading"]
+            text_content = section["text"]
+
+            combined_text += heading_text + " " + text_content + " " # 見出しと本文を結合
+
+            if "sub sections" in section: #  section でチェック # 修正
+                sub_sections_text = self.concatenate_text_data_recursive(section["sub sections"]) #  再帰呼び出し
+                combined_text += sub_sections_text #  サブセクションのテキストも結合
+        return combined_text
+
+
     def extract_entities(self):
         """
         GiNZAを使って、本文全体から固有表現抽出を行う。
-
-        Returns:
-            dict: 固有表現抽出結果 (辞書形式)
-                  キー: 固有表現ラベル (例: "PERSON", "ORG", "LOCATION")
-                  値: 固有表現リスト (str)
         """
         logger.info("固有表現抽出開始")
-        all_text = ""
+
+        # テキストデータを結合 # 追記
+        all_text = self.concatenate_text_data() #  concatenate_text_data メソッドを呼び出す # 追記
         for section in self.text_data["headings_and_text"]:
-            all_text += section["heading"] + "\n"
-            all_text += section["text"] + "\n"
+            all_text += section.get("heading", "") + "\n"
+            all_text += section.get("text", "") + "\n"
 
         # ページタイトルを人名としてルール追加
         ruler = self.nlp.add_pipe("entity_ruler", before="ner")

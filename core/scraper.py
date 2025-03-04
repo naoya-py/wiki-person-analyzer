@@ -1,10 +1,11 @@
 import requests
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup, Comment, Tag
 import re
 import unicodedata
-from utils.logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger, log_message
 import logging
 import sys
+
 
 configure_logging(level=logging.INFO, stream=sys.stdout)
 logger = get_logger(__name__)
@@ -40,17 +41,23 @@ class Scraper:
     exclude_words = ["編集"]  #  必要に応じてリストに追加
 
 
-    def __init__(self, page_title: str):
+    def __init__(self, page_title, wikipedia_url=None):
         """
-        Scraperのコンストラクタ。
+        Scraper オブジェクトの初期化
 
         Args:
-            page_title (str): スクレイピング対象のWikipediaページタイトル
+            page_title (str): スクレイピング対象の Wikipedia ページタイトル
+            wikipedia_url (str, optional): Wikipedia ページの URL. Defaults to None.
         """
         self.page_title = page_title
-        self.page_id = None  # ページID (後で取得)
-        self.html_content = None  # HTMLコンテンツ (後で取得)
-        logger.debug(f"Scraperオブジェクトを初期化しました。対象ページ: {page_title}")
+        self.wikipedia_url = wikipedia_url or f"https://ja.wikipedia.org/wiki/{page_title}"
+        self.session = requests.Session() #  requests Session を初期化 # 追記
+        log_message('debug', "Scraperオブジェクトを初期化しました。", page_title=page_title) #  log_message を使用 # 修正
+        self.page_content = None #  ページコンテンツを格納する変数 # 追記
+        self.infobox_data = {}
+        self.text_data = {}
+        self.image_data = {}
+        self.categories = []
 
     def fetch_page_data(self):
         """
@@ -61,42 +68,44 @@ class Scraper:
             ValueError: Wikipedia APIエラー、ページが見つからない場合、
                             またはリクエストエラーが発生した場合。
         """
-        logger.info(f"ページデータ取得開始: {self.page_title}")
-        params = {
-            "action": "parse", #parseに変更
-            "format": "json",
-            "page": self.page_title,
-            "prop": "text",  # textのみ取得
-            "redirects": "true"
-        }
+        with start_action(action_type="fetch_page_data", page_title=self.page_title) as action:  # 修正
+            log_message("info", f"ページデータ取得開始: {self.page_title}")  # 修正
+            params = {
+                "action": "parse",  # parseに変更
+                "format": "json",
+                "page": self.page_title,
+                "prop": "text",  # textのみ取得
+                "redirects": "true"
+            }
 
-        try:
-            response = requests.get(self.BASE_URL, params=params)
-            response.raise_for_status()
-            data = response.json()
-            logger.debug(f"APIレスポンス: {data}")
+            try:
+                response = requests.get(self.BASE_URL, params=params)
+                response.raise_for_status()
+                data = response.json()
+                log_message("debug", f"APIレスポンス: {data}")  # 修正
 
-            if "error" in data:
-                error_info = data["error"]["info"]
-                logger.error(f"Wikipedia APIエラー: {error_info}")
-                raise ValueError(f"Wikipedia APIエラー: {error_info}") # エラーメッセージ簡略化
+                if "error" in data:
+                    error_info = data["error"]["info"]
+                    log_message("error", f"Wikipedia APIエラー: {error_info}")  # 修正
+                    raise ValueError(f"Wikipedia APIエラー: {error_info}")  # エラーメッセージ簡略化
 
-            if "parse" not in data:
-                logger.error(f"ページが見つかりません: {self.page_title}")
-                raise ValueError(f"ページが見つかりません: {self.page_title}") # エラーメッセージ簡略化
+                if "parse" not in data:
+                    log_message("error", f"ページが見つかりません: {self.page_title}")  # 修正
+                    raise ValueError(f"ページが見つかりません: {self.page_title}")  # エラーメッセージ簡略化
 
-            self.page_id = data["parse"]["pageid"]
-            self.html_content = data["parse"]["text"]["*"]
-            logger.info(f"ページデータを取得しました。ページID: {self.page_id}")
+                self.page_id = data["parse"]["pageid"]
+                self.html_content = data["parse"]["text"]["*"]
+                log_message("info", f"ページデータを取得しました。ページID: {self.page_id}")  # 修正
+                action.add_success()  # 追加
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"リクエストエラー: {e}")
-            self.page_id = None  # エラー時にも page_id を初期化
-            raise ValueError(f"リクエストエラー: {e}") from e
-        except ValueError as e: #追加
-            logger.error(f"ValueError: {e}")
-            self.page_id = None
-            raise
+            except requests.exceptions.RequestException as e:
+                log_message("error", f"リクエストエラー: {e}")  # 修正
+                self.page_id = None  # エラー時にも page_id を初期化
+                raise ValueError(f"リクエストエラー: {e}") from e
+            except ValueError as e:  # 追加
+                log_message("error", f"ValueError: {e}")  # 修正
+                self.page_id = None
+                raise
 
     def _extract_text_from_cell(self, cell: BeautifulSoup) -> str:
         """
@@ -369,14 +378,17 @@ class Scraper:
         """
         logger.debug("階層的な見出しと本文抽出開始 (h2, h3, h4対応)")
         headings_and_text = []
-        heading_divs_h2 = soup.find_all('div', class_='mw-heading mw-heading2') # h2レベルの div.mw-heading を取得
+        heading_divs_h2 = soup.find_all('div', class_='mw-heading mw-heading2')  # h2レベルの div.mw-heading を取得
 
-        for heading_div_h2 in heading_divs_h2: # h2レベルの div.mw-heading を処理
+        for heading_div_h2 in heading_divs_h2:  # h2レベルの div.mw-heading を処理
             h2_tag = heading_div_h2.find('h2')
             if h2_tag:
                 h2_heading_text = h2_tag.get_text(strip=True)
-                if not h2_heading_text: # 空の見出しはスキップ
-                    continue
+            else:  # h2_tag が None の場合
+                h2_heading_text = ""  # デフォルト値として空文字列を設定 # 修正
+
+            if not h2_heading_text:  # 空の見出しはスキップ (デフォルト値が空文字列の場合もスキップ)
+                continue
 
             h2_paragraphs = []
             sub_sections_h3 = []
@@ -605,24 +617,33 @@ class Scraper:
         logger.debug("不要ワード削除完了") #  debugログ追加
         return processed_headings_and_text
 
+
 if __name__ == "__main__":
-    from utils.logger import logger  # logger設定 (logger.py が必要)
-    import json
+    from utils.logger import configure_logging, get_logger
+    import json  # json モジュールを import # 追記
 
     # logger設定 (ファイルとコンソールに出力)
-    logger.basicConfig(level=logger.DEBUG) #  logger設定は main 側で行う
+    configure_logging(level=logging.DEBUG, stream=sys.stdout)  # DEBUGレベルに設定
+    logger = get_logger(__name__)  # logger設定は main 側で行う
 
-    scraper = Scraper(page_title="アルベルト・アインシュタイン") #  例: アルベルト・アインシュタイン
+    scraper = Scraper(page_title="アルベルト・アインシュタイン")  # 例: アルベルト・アインシュタイン
     scraper.fetch_page_data()
+
+    text_data = scraper.extract_text(normalize_text=True, remove_exclude_words=True)  # scraperを定義した後で実行
+    with open("text_data_output.json", "w", encoding="utf-8") as f:  # ファイルに保存 # 追記
+        json.dump(text_data, f, indent=2, ensure_ascii=False)  # ファイルに保存 # 追記
+
+    print("\n--- 本文テキストデータ ---")
+    print(json.dumps(text_data, ensure_ascii=False, indent=2))
 
     # 改良版のextract_text()を実行 (正規化ON, 不要ワード削除ON)
     extracted_data_improved = scraper.extract_text(normalize_text=True, remove_exclude_words=True)
-    print("--- 本文と見出し (pタグとliタグ, 正規化ON, 不要ワード削除ON) ---") #  表示変更
+    print("--- 本文と見出し (pタグとliタグ, 正規化ON, 不要ワード削除ON) ---")  # 表示変更
     print(json.dumps(extracted_data_improved, ensure_ascii=False, indent=2))
 
     # 改良版のextract_text()を実行 (正規化OFF, 不要ワード削除OFF)
     extracted_data_raw = scraper.extract_text(normalize_text=False, remove_exclude_words=False)
-    print("\n--- 本文と見出し (pタグとliタグ, 正規化OFF, 不要ワード削除OFF) ---") #  表示変更
+    print("\n--- 本文と見出し (pタグとliタグ, 正規化OFF, 不要ワード削除OFF) ---")  # 表示変更
     print(json.dumps(extracted_data_raw, ensure_ascii=False, indent=2))
 
     # 画像データ抽出処理を追加
