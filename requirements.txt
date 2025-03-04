@@ -7,4 +7,10 @@ wordcloud
 Jinja2
 japanize_matplotlib
 seaborn
-loguru
+spacy
+ginza
+lxml
+pytest
+tqdm
+structlog
+rich
