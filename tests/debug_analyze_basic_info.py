@@ -58,6 +58,8 @@ if __name__ == "__main__":
         "name": ["マリー・キュリー"],
         "birth_date": ["1867年11月7日bad"],  # 不正な日付形式
         "death_date": ["1934年7月4日bad"],  # 不正な日付形式
+        "nationality": ["ポーランド、フランス"],
+        "field": ["物理学、化学"]
     }
     df_basic_bad_date = pd.DataFrame(basic_info_data_bad_date)
     debug_analyze_basic_info(df_basic_bad_date)
@@ -68,6 +70,8 @@ if __name__ == "__main__":
         "name": ["ニュートン"],
         "birth_date": [None],  # None
         "death_date": ["1727年3月31日"],
+        "nationality": ["イギリス"],
+        "field": ["物理学、数学"]
     }
     df_basic_missing = pd.DataFrame(basic_info_data_missing)
     debug_analyze_basic_info(df_basic_missing)
@@ -84,6 +88,8 @@ if __name__ == "__main__":
         "name": [123],  # int
         "birth_date": [18790314],  # int
         "death_date": [19550418],  # int
+        "nationality": ["ドイツ、スイス、アメリカ"],
+        "field": ["理論物理学"]
     }
     df_basic_bad_type = pd.DataFrame(basic_info_data_bad_type)
     debug_analyze_basic_info(df_basic_bad_type)

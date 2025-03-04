@@ -7,10 +7,10 @@ import spacy
 from dateutil.parser import parse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from logger import configure_logging, get_logger
+import dateparser
 
 configure_logging(level=logging.INFO, stream=sys.stdout)
 logger = get_logger(__name__)
-
 
 class Analyzer:
     """
@@ -46,8 +46,8 @@ class Analyzer:
             return analysis_result
 
         try:
-            birth_date = self._parse_date(self.df_basic["birth_date"].iloc[0])
-            death_date = self._parse_date(self.df_basic["death_date"].iloc[0])
+            birth_date = self._parse_date_dateparser(self.df_basic["birth_date"].iloc[0])
+            death_date = self._parse_date_dateparser(self.df_basic["death_date"].iloc[0])
             if pd.isnull(birth_date) or pd.isnull(death_date):
                 analysis_result["age"] = "計算不可"
                 logger.warning("生年月日または没年月日が無効なため、年齢を計算できません。")
@@ -65,13 +65,20 @@ class Analyzer:
         logger.info("基本情報の分析が完了しました。")
         return analysis_result
 
-    def _parse_date(self, date_str):
+    def _parse_date_dateparser(self, date_str):  # 関数名を変更 # 修正
         """
-        日付文字列をdateutil.parser.parseでdatetime型に変換する。
-        パースできない場合はpd.NaTを返す。"""
-        if not isinstance(date_str, str): return pd.NaT
+        日付文字列をdateparserでdatetime型に変換する。
+        多言語対応の柔軟なパースが可能。
+        パースできない場合はpd.NaTを返す。
+        """
+        if not isinstance(date_str, str):
+            return pd.NaT
         try:
-            return parse(date_str, fuzzy=True)
+            date_obj = dateparser.parse(date_str, languages=['ja'])  # dateparser.parse を使用、language='ja' を指定 # 修正
+            if date_obj:  # dateparser.parse は None を返す場合があるため、None 判定を追加 # 追記
+                return date_obj
+            else:
+                return pd.NaT  # dateparser.parse が None を返した場合、pd.NaT を返す # 追記
         except (ValueError, TypeError):
             return pd.NaT
 
