@@ -35,7 +35,7 @@ class Scraper:
     BASE_URL = "https://ja.wikipedia.org/w/api.php"  # 日本語版WikipediaのAPIエンドポイント
 
     unnecessary_tags = [
-        "sup", "style", "i", "strong", "em", "sub", "cite",
+        "sup", "style", "scope", "typeof", "strong",
     ]  #  必要に応じてリストを調整 (docstringで説明追加)
     exclude_words = ["編集"]  #  必要に応じてリストに追加
 
@@ -113,7 +113,7 @@ class Scraper:
         """
         # 不要なタグを削除
         for tag in cell.find_all(
-            ["sup", "style", "b", "i", "strong", "em", "sub", "cite"]
+            ["style", "scope", "typeof", "strong", "href"]
         ):  # styleタグも削除
             tag.decompose()
 

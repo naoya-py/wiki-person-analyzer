@@ -1,4 +1,3 @@
-# visualizer.py
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 import networkx as nx
