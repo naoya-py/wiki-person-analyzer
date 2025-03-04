@@ -1,9 +1,9 @@
-from scraper import Scraper
+from core.scraper import Scraper
 import json
-from logger import configure_logging, get_logger, print_exception
+from utils.logger import configure_logging, get_logger, print_exception
 import logging
 import sys
-from analyzer import wakati_text
+from core.analyzer import wakati_text
 
 def debug_scraper(page_title):
     """

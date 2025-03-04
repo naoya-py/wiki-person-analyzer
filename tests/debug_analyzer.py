@@ -1,7 +1,7 @@
-from analyzer import Analyzer
+from core.analyzer import Analyzer
 import pandas as pd
 import json
-from logger import configure_logging, get_logger, print_exception
+from utils.logger import configure_logging, get_logger
 import logging
 import sys
 

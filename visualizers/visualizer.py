@@ -1,10 +1,9 @@
 # visualizer.py
 import matplotlib.pyplot as plt
-import japanize_matplotlib
 from wordcloud import WordCloud
 import networkx as nx
 import seaborn as sns
-from logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger
 import logging
 import sys
 

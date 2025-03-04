@@ -4,9 +4,8 @@ import MeCab  # MeCabをインポート
 import networkx as nx
 import pandas as pd
 import spacy
-from dateutil.parser import parse
 from sklearn.feature_extraction.text import TfidfVectorizer
-from logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger
 import dateparser
 
 configure_logging(level=logging.INFO, stream=sys.stdout)

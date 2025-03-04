@@ -3,9 +3,7 @@ import pandas as pd
 import re
 import ginza
 from dateutil.parser import parse
-from tqdm import tqdm
-import datetime
-from logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger
 import logging
 import sys
 
@@ -415,7 +413,7 @@ class DataProcessor:
 
 
 if __name__ == "__main__":
-    from scraper import Scraper
+    from core.scraper import Scraper
     import json
 
     # logger設定 (ファイルとコンソール出力)

@@ -1,6 +1,6 @@
-from analyzer import Analyzer
+from core.analyzer import Analyzer
 import pandas as pd
-from logger import configure_logging, get_logger, print_exception, print_separator
+from utils.logger import configure_logging, get_logger, print_exception, print_separator
 import logging
 import sys
 import json

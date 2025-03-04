@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup, Comment
 import re
 import unicodedata
-from logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger
 import logging
 import sys
 
@@ -606,7 +606,7 @@ class Scraper:
         return processed_headings_and_text
 
 if __name__ == "__main__":
-    from logger import logger  # logger設定 (logger.py が必要)
+    from utils.logger import logger  # logger設定 (logger.py が必要)
     import json
 
     # logger設定 (ファイルとコンソールに出力)

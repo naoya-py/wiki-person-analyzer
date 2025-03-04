@@ -54,5 +54,5 @@ if __name__ == "__main__":
     }
 
     generator = ReportGenerator()
-    generator.generate_report(test_data, output_path="data/output/report.html")
+    generator.generate_report(test_data, output_path="../data/output/report.html")
     print("レポートを data/output/report.html に出力しました。")

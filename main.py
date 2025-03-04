@@ -1,11 +1,11 @@
-from scraper import Scraper
-from data_processor import DataProcessor
-from analyzer import Analyzer
-from visualizer import Visualizer
-from report_generator import ReportGenerator
+from core.scraper import Scraper
+from core.data_processor import DataProcessor
+from core.analyzer import Analyzer
+from visualizers.visualizer import Visualizer
+from core.report_generator import ReportGenerator
 import os
 import datetime
-from logger import configure_logging, get_logger
+from utils.logger import configure_logging, get_logger
 import logging
 import sys
 
