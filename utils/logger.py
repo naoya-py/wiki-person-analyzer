@@ -8,14 +8,16 @@ def create_directory_if_not_exists(directory):
         os.makedirs(directory)
         print(f"ディレクトリ '{directory}' を作成しました。")
 
-def configure_logging(level="INFO", stream=sys.stdout):
+def configure_logging(level="DEBUG", stream=sys.stdout, rotation="10 MB"): #  修正: rotation をリストから文字列 "10 MB" に変更
     """
     loguru を設定する関数。
     コンソール出力とファイル出力を設定し、ログフォーマットとログレベルを定義。
+    ファイルローテーション設定 (サイズ上限) を追加。
 
     Args:
         level (str): ロギングレベル (例: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
         stream (io.TextIOBase): コンソールログ出力先ストリーム (例: sys.stdout, sys.stderr)
+        rotation (str, optional): ログローテーション設定 (例: "10 MB", "1 day"). Defaults to "10 MB". #  修正: rotation の型とデフォルト値を修正
     """
     # 既存の Handler をクリア (設定の重複を避けるため)
     logger.configure(handlers=[])
@@ -34,6 +36,9 @@ def configure_logging(level="INFO", stream=sys.stdout):
         enqueue=True, #  非同期化 (パフォーマンス向上)
         backtrace=True, #  バックトレースを記録
         diagnose=True,  #  診断情報を記録
+        rotation=rotation,  #  修正: rotation に単一の文字列 "10 MB" を設定 (サイズローテーション)
+        retention=5, #  保持するログファイル数: 5個
+        compression="zip", #  ローテーション時にファイルを zip 圧縮
     )
 
     # コンソール出力設定

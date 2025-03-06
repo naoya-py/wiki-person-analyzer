@@ -1,56 +1,103 @@
-import spacy
 import pandas as pd
-import re
-import ginza
-from dateutil.parser import parse
+import spacy
+from core.scraper import Scraper
+from typing import List, Dict, Tuple
+from collections import defaultdict
 from utils.logger import configure_logging, get_logger
 import logging
 import sys
+import re
+import dateparser
+from fuzzywuzzy import fuzz
+import MeCab
 
+spacy.prefer_gpu()
 configure_logging(level=logging.DEBUG, stream=sys.stdout)
 logger = get_logger(__name__)
 
+mecab = MeCab.Tagger("-Owakati") # MeCab の初期化をグローバルスコープに移動 (extract_rule_based_entities_dict でも使用するため)
 
 class DataProcessor:
     """
-    スクレイピングしたデータを整形・加工するクラス。
+    人物データ処理クラス。
+
+    scraper: Scraper
+        Scraperオブジェクト
+    nlp: spacy.lang.ja.Japanese
+        spaCy日本語モデル
+    name: str
+        人物名
+    text_data: dict
+        スクレイピングしたテキストデータ
+    image_data: list
+        スクレイピングした画像データ
+    infobox_data: dict
+        スクレイピングしたinfoboxデータ
+    categories: list
+        スクレイピングしたカテゴリデータ
+    headings_and_text: list
+        テキストデータから抽出した見出しと本文のリスト
+    entities: Dict[str, DefaultDict[str, int]]
+        抽出されたエンティティ (名詞、固有表現)
     """
 
-    def __init__(self, infobox_data, text_data, image_data, categories, page_title):
+    def __init__(self, page_title: str):
         """
-        コンストラクタ。
+        DataProcessor オブジェクトの初期化。
 
         Args:
-            infobox_data (dict): Scraper.extract_infobox_data() からの出力 (基本情報)。
-            text_data (dict): Scraper.extract_text() からの出力 (本文テキスト, 見出し)。
-            image_data (list): Scraper.extract_image_data() からの出力 (画像URL, キャプション)
-            categories (list): Scraper.extract_categories() からの出力 (カテゴリ)
-            page_title (str): ページタイトル
+            page_title (str): Wikipedia ページタイトル
         """
-        self.infobox_data = infobox_data
-        self.text_data = text_data
-        self.image_data = image_data
-        self.categories = categories
-        self.page_title = page_title
-        self.df_basic = None
-        self.df_timeline = None
-        self.df_network = None
-        self.entities = None
-        self.nlp = spacy.load("ja_ginza_electra")
-        ginza.set_split_mode(self.nlp, "C")  # 分割単位を最大に
-        logger.debug("DataProcessorオブジェクトを初期化しました。")
+        self.scraper = Scraper(page_title=page_title)
+        self.nlp = spacy.load("ja_ginza_bert_large")
+        self.name = page_title
+        self.text_data = None
+        self.image_data = None
+        self.infobox_data = None
+        self.categories = None
+        self.headings_and_text = None #  初期化
+        self.entities = defaultdict(lambda: defaultdict(int))  #  初期化と defaultdict の defaultdict に変更 # 修正
+        logger.info("DataProcessorオブジェクトを初期化しました。", page_title=page_title)
+
+        # MeCab-IPADIC-NEologd を使用する MeCab Tagger を初期化 **←  MeCab-IPADIC-NEologd 用 Tagger を初期化**
+        try:
+            self.mecab_neologd = MeCab.Tagger(
+                "-Owakati -d //wsl.localhost/Ubuntu/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ipadic-neologd"  #  辞書パスは環境に合わせて調整
+            )
+            logger.info("MeCab-IPADIC-NEologd の初期化に成功しました。") #  ログ出力
+        except RuntimeError as e:
+            logger.error(f"MeCab-IPADIC-NEologd の初期化に失敗しました: {e}") #  エラーログ出力
+            logger.error("ルールベース NER (辞書検索) はスキップされます。") #  エラーログ出力
+            self.mecab_neologd = None #  初期化失敗時は None を設定
+
+
+    def fetch_data(self):
+        """
+        Scraper を使用して Wikipedia ページからデータを取得し、
+        各属性に格納する。
+        """
+        logger.info("データ取得開始", page_title=self.name)
+        self.scraper.fetch_page_data()  # ページデータを取得
+        self.text_data = self.scraper.extract_text()
+        self.image_data = self.scraper.extract_image_data()
+        self.infobox_data = self.scraper.extract_infobox_data()
+        self.categories = self.scraper.extract_categories()
+        self.headings_and_text = self.text_data["headings_and_text"] #  取得
+        logger.info("データ取得完了", page_title=self.name)
 
     def process_data(self):
         """
-        データの整形・加工を行うメインメソッド。
-        各データ処理メソッドを呼び出し、DataFrame を生成する。
+        取得したデータを処理し、エンティティを抽出する。
         """
-        logger.info("データ処理開始")
-        self.df_basic = self.create_basic_info_dataframe()
-        self.entities = self.extract_entities()
-        self.df_timeline = self.extract_timeline()
-        self.df_network = self.extract_network() #  TODO:  後で実装
-        logger.info("データ処理完了")
+        logger.info("データ処理開始", page_title=self.name)
+        if self.text_data is None:
+            self.fetch_data()  # データがまだ取得されていない場合は取得
+
+        #  headings_and_text を生成・設定 # 追記
+        self.headings_and_text = self.scraper.extract_text()  # scraper.extract_text() を呼び出し headings_and_text を取得
+
+        self.entities = self.extract_entities()  # エンティティ抽出処理を実行 # 修正
+        logger.info("データ処理完了", page_title=self.name)
 
     def _format_value(self, value):
         """
@@ -147,6 +194,111 @@ class DataProcessor:
         logger.info("基本情報DataFrame作成完了")
         return df
 
+    def extract_timeline(self):
+        """
+        年表を抽出する (順序付きリスト形式の年表を想定)。
+
+        Returns:
+            pandas.DataFrame: 年表データフレーム (年、出来事)
+        """
+        logger.info("年表抽出開始 (順序付きリスト形式)") #  ログメッセージを修正
+        df_timeline = pd.DataFrame(columns=["年", "出来事"]) #  年表データフレームを初期化
+
+        timeline_section = self.scraper.soup.find("h2", id="年譜") #  id="年譜" の h2 要素 (年譜セクション見出し) をfind
+        if timeline_section: #  年譜セクション見出しが存在する場合のみ処理
+            timeline_ol = timeline_section.find_next_sibling("div", class_="mw-parser-output").find("ol") #  年譜セクション見出しの次の div.mw-parser-output 内の ol 要素 (年表リスト) をfind
+            if timeline_ol: #  年表リスト ol が存在する場合のみ処理
+                li_elements = timeline_ol.find_all("li") #  年表リスト ol 内の li 要素 (各年と出来事) をfind_all
+                for li_element in li_elements: #  年表リスト li 要素をループ処理
+                    b_element = li_element.find("b") #  li 要素内の b 要素 (年) をfind
+                    if b_element: #  b 要素 (年) が存在する場合のみ処理
+                        year = b_element.text.strip() #  b 要素から年を取得し、strip() で空白除去
+                        event = "" #  出来事を初期化
+                        #  b 要素 (年) の次の要素から出来事をテキストとして取得 (兄弟要素をnext_siblingsでループ)
+                        for sibling in b_element.next_siblings:
+                            if sibling.name is None: #  NavigableString (テキスト) の場合
+                                event += sibling.strip() #  テキストをstrip() で空白除去して追加
+                            elif sibling.name == "br": #  <br> タグの場合 (改行)
+                                event += "\n" #  改行文字を追加
+                            #  必要に応じて他の要素 (例: <a>, <span> など) の処理を追加
+
+                        if year and event: #  年と出来事が取得できた場合のみデータフレームに追加
+                            df_timeline = pd.concat([df_timeline, pd.DataFrame([{"年": year, "出来事": event}])], ignore_index=True) #  データフレームに追加
+
+        logger.info("年表抽出完了 (順序付きリスト形式)") #  ログメッセージを修正
+        return df_timeline
+
+    def extract_relations(self):
+        """
+        本文から人物間の関係を抽出する。
+        **係り受け解析を利用**
+
+        Returns:
+            list: 人物関係リスト (tuple)
+                (人物1, 人物2, 関係の種類) の形式
+        """
+        logger.info("人物関係抽出開始")
+        if not self.entities:
+            logger.warning("固有表現が抽出されていません。")
+            return []
+
+        if "人名" not in self.entities:
+            logger.warning("人物名の固有表現が抽出されていません。")
+            return []
+
+        person_names = self.entities["人名"]
+        relations = []
+        person_name_list = list(person_names.keys())  # 人名リストをリスト型で取得 # 追加
+
+        # 全文をテキストとして取得
+        all_text = ""
+        for section in self.text_data["headings_and_text"]:
+            logger.debug(f"section のキー: {section.keys()}")  # デバッグログ: section のキーを出力
+            #  修正: section["heading"] -> section.get("heading_text", "")
+            all_text += section.get("heading_text", "") + " "  # 修正: .get() を使用
+            all_text += section["text_content"] + " "  # text_content に変更 **重要**
+
+        # 文単位で分割
+        sentences = re.split(r'[。！？]', all_text)
+        for sentence in sentences:  # 変数名変更 (sent -> sentence)
+            # 文中に2人以上のPERSONが存在するかどうか
+            sentence_person_entities = []  # 文書中から抽出されたPERSONエンティティを格納するリスト # 追加
+            doc = self.nlp(sentence)  # 変数名変更 (sent -> sentence)
+            for ent in doc.ents:
+                if ent.label_ == "PERSON":
+                    sentence_person_entities.append(ent.text)  # 文書中のPERSONエンティティをリストに追加 # 追加
+
+            if len(sentence_person_entities) < 2:  # 文中に2人以上のPERSONが存在するかどうか # 修正
+                continue
+
+            # spacyで文を解析
+            for i in range(len(sentence_person_entities)):  # あいまい一致で人物名比較 # 修正
+                for j in range(i + 1, len(sentence_person_entities)):  # あいまい一致で人物名比較 # 修正
+                    person1_name = sentence_person_entities[i]  # あいまい一致で人物名比較 # 修正
+                    person2_name = sentence_person_entities[j]  # あいまい一致で人物名比較 # 修正
+
+                    # あいまい一致で人名がperson_names (extract_entitiesで抽出された人名リスト) に含まれるか確認 # 追加
+                    person1_candidate = None
+                    person2_candidate = None
+                    for extracted_name in person_name_list:  # 抽出された人名リストから候補を検索 # 追加
+                        if fuzz.partial_ratio(person1_name, extracted_name) >= 80:  # 類似度80%以上を閾値とする (調整可能) # 追加
+                            person1_candidate = extracted_name  # 候補が見つかったら格納 # 追加
+                            break  # 最初に見つかった候補を採用 # 追加
+                    for extracted_name in person_name_list:  # 抽出された人名リストから候補を検索 # 追加
+                        if fuzz.partial_ratio(person2_name, extracted_name) >= 80:  # 類似度80%以上を閾値とする (調整可能) # 追加
+                            person2_candidate = extracted_name  # 候補が見つかったら格納 # 追加
+                            break  # 最初に見つかった候補を採用 # 追加
+
+                    if person1_candidate and person2_candidate:  # 両方の人物候補が見つかった場合のみ関係抽出 # 追加
+                        # 関係の種類を判定 (係り受け解析)
+                        relation_type = self._determine_relation_type(person1_candidate, person2_candidate,
+                                                                        doc)  # 候補名で関係抽出 # 修正
+                        if relation_type:  # 関係性が特定できた場合のみ追加
+                            relations.append((person1_candidate, person2_candidate, relation_type))  # 候補名で関係を登録 # 修正
+
+        logger.info("人物関係抽出完了")
+        return relations
+
     def _format_name(self, name):
         """
         名前を整形する (日本語/英語表記対応)。
@@ -166,338 +318,225 @@ class DataProcessor:
                 return f"{japanese_name}/{english_name}"
         return name
 
-    def concatenate_text_data(self) -> str:
-        """text_data (抽出された本文と見出し) を一つの文字列に連結する。"""
-        logger.info("text_data を連結して一つのテキストデータを作成")
-        concatenated_text = ""
-
-        if not self.text_data or not self.text_data[
-            'headings_and_text']:  # text_data または headings_and_text が None/空の場合は空文字列を返す
-            logger.warning("text_data が空です。空文字列を返します。")
-            return ""
-
-        for section in self.text_data['headings_and_text']:
-            logger.debug(f"concatenate_text_data: section の内容: {section}")  # 追加: section の内容をログ出力 # 追加
-            heading_text = section.get('heading_text')  # 修正: .get('heading_text') を使用 (KeyError 回避)
-            text_content = section['text_content']  # text_content は必須キーと想定
-
-            if heading_text:  # 見出しがある場合
-                concatenated_text += f"## {heading_text}\n\n{text_content}\n\n"  # Markdown形式
-            else:  # 見出しがない場合 (概要など)
-                concatenated_text += f"{text_content}\n\n"  # 見出しなしで本文のみ連結
-
-        logger.debug(f"連結後のテキストデータ (冒頭100文字): {concatenated_text[:100]}")  # 連結後テキストデータ (冒頭100文字) をログ出力
-        logger.info("テキストデータの連結処理完了")
-        return concatenated_text
-
-    def concatenate_text_data_recursive(self, sub_sections): #  再帰呼び出し用ヘルパー関数を追加 # 追記
+    def extract_entities(self) -> Dict[str, defaultdict[str, int]]:
         """
-        (内部用) サブセクションのテキストデータを再帰的に結合するヘルパー関数.
-
-        Args:
-            sub_sections (List[Dict]): サブセクションの構造化データ.
-
-        Returns:
-            str: 結合されたテキストデータ.
+        GiNZAとルールベースで、本文全体から固有表現抽出を行う。
         """
-        combined_text = ""
-        for section in sub_sections: #  sub_sections をループ処理 # 修正
-            heading_text = section["heading"]
-            text_content = section["text"]
+        logger.info("固有表現抽出開始")  # 開始ログを追加
 
-            combined_text += heading_text + " " + text_content + " " # 見出しと本文を結合
+        if not self.text_data or not self.text_data['headings_and_text']:  # text_data が空の場合はエラー # 追記
+            logger.error(
+                "テキストデータがありません。fetch_data() または process_data() を実行してください。")  # エラーログ出力 # 追記
+            raise ValueError(
+                "テキストデータがありません。fetch_data() または process_data() を実行してください。")  # エラーをraise # 追記
 
-            if "sub sections" in section: #  section でチェック # 修正
-                sub_sections_text = self.concatenate_text_data_recursive(section["sub sections"]) #  再帰呼び出し
-                combined_text += sub_sections_text #  サブセクションのテキストも結合
-        return combined_text
+        all_entities = defaultdict(lambda: defaultdict(int))  # defaultdict の defaultdict
+        mecab = MeCab.Tagger("-Owakati") #  標準 MeCab を使用 (形態素解析用)
 
+        logger.debug(
+            f"text_data のキー: {self.text_data.keys() if self.text_data else None}")  # text_data のキーをログ出力 # 修正
+        if self.text_data and 'headings_and_text' in self.text_data:  # text_data と headings_and_text が存在する場合のみ # 修正
+            logger.debug(
+                f"text_data['headings_and_text'] の長さ: {len(self.text_data['headings_and_text'])}")  # text_data['headings_and_text'] の長さをログ出力 # 修正
+            if self.text_data['headings_and_text']:  # headings_and_text が空リストでない場合のみ # 修正
+                for i, section in enumerate(self.text_data['headings_and_text']):  # enumerate でインデックス付きループ # 修正
+                    logger.debug(f"セクション {i} のキー: {section.keys()}")  # セクション (辞書) のキーをログ出力 # 修正
+                    if 'heading_text' in section:  # heading_text キーが存在する場合のみ # 修正
+                        logger.debug(f"処理中のセクション: {section['heading_text']}")  # 処理中のセクション名をログ出力 # 修正
+                    else:  # heading_text キーが存在しない場合 # 修正
+                        logger.debug(f"セクション {i} に 'heading_text' キーが存在しません")  # 警告ログを出力 # 修正
+                    section_text = section.get("text_content", "")  # text_content が存在しない場合は空文字を代入 # 修正
+                    logger.debug(f"セクションテキストの長さ: {len(section_text)}")  # セクションテキストの長さをログ出力 # 修正
+                    logger.debug(
+                        f"spaCy 入力テキスト (セクション '{section.get('heading_text', 'No Heading')}') : {section_text[:30]}...")  # spaCy 入力テキスト (先頭100文字) を DEBUG レベルでログ出力 # 追加 **重要**
+                    doc = self.nlp(section_text)
+                    logger.debug(
+                        f"spaCy 入力テキスト (セクション '{section.get('heading_text', 'No Heading')}') : {section_text[:100]}...")  # spaCy 入力テキスト (先頭100文字) を DEBUG レベルでログ出力 # 追加 **重要**
+                    entity_list = [(ent.text, ent.label_) for ent in doc.ents]  # 抽出された固有表現リストを作成 # 追加
+                    person_entities = [(ent.text, ent.label_, ent.root.pos_) for ent in doc.ents if
+                                       ent.label_ == "PERSON"]  # PERSON の固有表現リストを作成 # 追加
+                    logger.debug(
+                        f"spaCy 抽出結果 (セクション '{section.get('heading_text', 'No Heading')}') : 抽出数={len(entity_list)}, PERSONのみ={person_entities}")  # spaCy 抽出結果 (抽出数と PERSON のみ) を DEBUG レベルでログ出力 # 修正 **重要**
+                    logger.debug(f"doc.ents の内容: {doc.ents}")  # doc.ents の内容をログ出力 # 追加  **重要**
+                    for token in doc:  # 修正: doc.tokens -> doc
+                        if token.pos_ == "NOUN":
+                            all_entities["名詞"][token.text] += 1
+                    for ent in doc.ents:
+                        logger.debug(
+                            f"抽出された固有表現: text='{ent.text}', label_='{ent.label_}', pos_='{ent.root.pos_}'")  # ログ出力追加
+                        if ent.label_ == "PERSON":  # フィルタリングを全解除 # 修正 (条件式を削除)
+                            mecab_result = mecab.parse(ent.text).strip()  # MeCab で形態素解析 # 追加  **重要: -Owakati オプション**
+                            logger.debug(
+                                f"MeCab 解析結果: text='{ent.text}', result='{mecab_result}'")  # MeCab 解析結果を DEBUG レベルでログ出力 # 追加 **重要**
+                            all_entities["人名"][ent.text] += 1
+                        elif ent.label_ == "ORG":
+                            all_entities["組織"][ent.text] += 1
+                        elif ent.label_ == "LOC":
+                            all_entities["地名"][ent.text] += 1
+                        elif ent.label_ == "DATE":
+                            all_entities["日付"][ent.text] += 1
+                        elif ent.label_ == "GPE":  # GPE (国・都市・州) を地名として扱う場合
+                            all_entities["地名"][ent.text] += 1
+                        #  以下に 固有表現 のカウント処理を追加 (例:  ent.label_ が固有表現を表すタイプの場合)
+                        #  **重要: キーを "固有表現" に指定**
+                        else:  # PERSON, ORG, LOC, DATE, GPE 以外のエンティティタイプを「固有表現」として扱う場合 (例)
+                            all_entities["固有表現"][ent.text] += 1  # キーを "固有表現" に修正
 
-    def extract_entities(self):
+                #  ルールベース NER (辞書検索)  **←  ルールベース NER (辞書検索) を追加**
+                rule_based_entities_dict = self.extract_rule_based_entities_dict(section_text) #  辞書検索で人名抽出 **←  修正: section_text を渡す**
+                for person_name in rule_based_entities_dict:
+                    all_entities["人名"][person_name] += 1
+                    logger.debug(f"ルールベース (辞書: MeCab-IPADIC-NEologd) 抽出: text='{person_name}'") #  ルールベース (辞書) の抽出結果をログ出力
+
+                #  ルールベース NER (正規表現)  **←  ルールベース NER (正規表現) は一旦コメントアウト**
+                # rule_based_entities_regex = self.extract_rule_based_entities_regex(self.wiki_doc.content) #  正規表現で人名抽出
+                # for person_name in rule_based_entities_regex:
+                #     all_entities["人名"][person_name] += 1
+                #     logger.warning(f"ルールベース (正規表現) 抽出: text='{person_name}'") #  ルールベース (正規表現) の抽出結果をログ出力
+
+            else:  # text_data または headings_and_text が存在しない場合 # 修正
+                logger.debug("text_data または 'headings_and_text' が空です")  # 警告ログを出力 # 修正
+
+        logger.info("固有表現抽出完了")  # 完了ログを追加
+        return all_entities
+
+    def extract_rule_based_entities_dict(self, text: str) -> list[str]:
         """
-        GiNZAを使って、本文全体から固有表現抽出を行う。
+        ルールベース NER (辞書検索) で人名を抽出する (MeCab-IPADIC-NEologd 使用)。
         """
-        logger.info("固有表現抽出開始")
+        if self.mecab_neologd is None: # MeCab-IPADIC-NEologd の初期化に失敗している場合は空リストを返す # 追記
+            logger.warning("MeCab-IPADIC-NEologd が初期化されていません。ルールベース NER (辞書検索) をスキップします。") # 警告ログ出力 # 追記
+            return [] # 空リストを返す # 追記
 
-        # テキストデータを結合 # 追記
-        all_text = self.concatenate_text_data() #  concatenate_text_data メソッドを呼び出す # 追記
-        for section in self.text_data["headings_and_text"]:
-            all_text += section.get("heading", "") + "\n"
-            all_text += section.get("text", "") + "\n"
+        extracted_names = []
+        node = self.mecab_neologd.parseToNode(text) #  MeCab-IPADIC-NEologd でテキストを解析 # 修正
+        while node:
+            features = node.feature.split(",") #  品詞情報を取得
+            if features[0] == "名詞" and features[1] == "固有名詞" and features[2] == "人名": #  品詞が「名詞-固有名詞-人名」の場合
+                extracted_names.append(node.surface) #  表層形 (単語) を人名として抽出
+                logger.debug(f"ルールベース (辞書: MeCab-IPADIC-NEologd) 抽出: text='{node.surface}', 品詞='{','.join(features[:3])}'") #  ログ出力 (DEBUG レベル)
+            node = node.next
+        return extracted_names
 
-        # ページタイトルを人名としてルール追加
-        ruler = self.nlp.add_pipe("entity_ruler", before="ner")
-        patterns = [{"label": "PERSON", "pattern": self.page_title}]
-        ruler.add_patterns(patterns)
-
-        doc = self.nlp(all_text)
-        entities = {}
-        for ent in doc.ents:
-            label = ent.label_
-            if label not in entities:
-                entities[label] = []
-            entities[label].append(ent.text)
-        logger.info("固有表現抽出完了")
-        return entities
-
-    def extract_relations(self):
+    def extract_rule_based_entities_regex(self, text: str) -> list[str]:
         """
-        本文から人物間の関係を抽出する。
-        **係り受け解析を利用**
-
-        Returns:
-            list: 人物関係リスト (tuple)
-                  (人物1, 人物2, 関係の種類) の形式
+        ルールベース NER (正規表現) で人名を抽出する。
         """
-        logger.info("人物関係抽出開始")
-        if not self.entities:
-            logger.warning("固有表現が抽出されていません。")
-            return []
+        extracted_names = []
+        patterns = [
+            r"([一-龯]{1,})\s([一-龯]{1,})",  #  漢字の姓と名の間に空白
+            r"([一-龯]{1,})先生",  #  漢字の姓 + 先生
+            r"([一-龯]{1,})氏",  #  漢字の姓 + 氏
+            r"([A-Z][a-z]+)\s([A-Z][a-z]+)",  #  英語の姓と名
+            #  必要に応じて正規表現パターンを追加
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                extracted_names.append(match.group(0)) #  マッチした文字列全体を人名として抽出
+        return extracted_names
 
-        if "PERSON" not in self.entities:
-            logger.warning("人物名の固有表現が抽出されていません。")
-            return []
-
-        person_names = self.entities["PERSON"]
-        relations = []
-
-        # 全文をテキストとして取得
-        all_text = ""
-        for section in self.text_data["headings_and_text"]:
-            all_text += section["heading"] + " "
-            all_text += section["text"] + " "
-
-        # 文単位で分割
-        sentences = re.split(r'[。！？]', all_text)
-        for sentence in sentences: #  変数名変更 (sent -> sentence)
-            # 文中に2人以上のPERSONが存在するかどうか
-            person_in_sentence = [person for person in person_names if person in sentence] #  変数名変更 (sent -> sentence)
-            if len(person_in_sentence) < 2:
-                continue
-
-            # spacyで文を解析
-            doc = self.nlp(sentence) #  変数名変更 (sent -> sentence)
-            for ent1 in doc.ents:
-                if ent1.label_ == "PERSON" and ent1.text in person_names:
-                    for ent2 in doc.ents:
-                        if ent2.label_ == "PERSON" and ent2.text in person_names and ent1 != ent2:
-                            # 関係の種類を判定 (係り受け解析)
-                            relation_type = self._determine_relation_type(ent1.text, ent2.text, doc)
-                            if relation_type: # 関係性が特定できた場合のみ追加
-                                relations.append((ent1.text, ent2.text, relation_type))
-
-        logger.info("人物関係抽出完了")
-        return relations
-
-    def extract_timeline(self):
+    def _determine_relation_type(self, person1: str, person2: str, doc: spacy.tokens.doc.Doc) -> str:
         """
-        本文から年表を抽出する。
-        「年譜」「年表」「略歴」などの見出しがあるセクションから年を抽出する。
-        詳細年表抽出機能(extract_detailed_timeline)と統合。
-
-        Returns:
-            pandas.DataFrame: 年表 DataFrame (year, date, event カラム)
-        """
-        logger.info("年表抽出開始")
-        timeline = []
-        if not self.text_data:
-            logger.warning("本文データがありません。")
-            return pd.DataFrame(columns=["year", "date", "event"])
-        for section in self.text_data["headings_and_text"]:
-            heading = section["heading"]
-            text = section["text"]
-            # 見出しに「年譜」「年表」「略歴」が含まれているか確認
-            if "年" in heading or "歴" in heading:
-                # 年を抽出(4桁 or 2桁 + "年代" or 世紀)
-                years = re.findall(r"(\d{4}年代?|\d{2}年代?|\d{1,2}世紀)", heading + text) # 見出しからも年号を抽出
-                if years:
-                    for year in set(years): #  重複年号を削除
-                        # 出来事を抽出(セクションテキスト)
-                        events = [text] # セクション全体をイベントとして登録
-                        for event in events:
-                            timeline.append({"year": year, "date": "", "event": event})
-
-
-        # 詳細な年表抽出
-        detailed_timeline = self.extract_detailed_timeline()
-        if not detailed_timeline.empty:
-            timeline.extend(detailed_timeline.to_dict("records")) #  辞書型データ対応
-
-        logger.info("年表抽出完了")
-
-        # 重複を削除
-        timeline_df = pd.DataFrame(timeline)
-        timeline_df.drop_duplicates(subset=["year", "date", "event"], inplace=True)
-
-        return timeline_df
-
-    def extract_detailed_timeline(self):
-        """
-        本文全体から詳細な年表を抽出する。
-        **年代、世紀表記に対応**
-
-        Returns:
-            pandas.DataFrame: 詳細年表 DataFrame (year, date, event カラム)
-        """
-        logger.info("詳細な年表抽出開始")
-        detailed_timeline = []
-        all_text = ""
-        for section in self.text_data["headings_and_text"]:
-            all_text += section["heading"] + " "
-            all_text += section["text"] + " "
-
-        sentences = re.split(r'[。！？]', all_text)
-        for sentence in sentences:
-            # 年号の正規表現パターンを修正 (年代、世紀に対応)
-            year_match = re.search(r"(\d{4}年代?|\d{2}年代?|\d{1,2}世紀)年?|(\d{4})年(\d{1,2})月", sentence)
-            if year_match:
-                if year_match.group(1): #  年代、世紀
-                    year = year_match.group(1)
-                elif year_match.group(2): #  年
-                    year = year_match.group(2)
-                else:
-                    year = None #  念のため year を None で初期化
-
-                if year and year_match.group(3): #  年、月
-                    month = year_match.group(3)
-                    date_str = f"{year}年{month}月"
-                    date = self.normalize_date(date_str)  # 日付を正規化
-                elif year: # 年のみ
-                    date_str = f"{year}年"
-                    date = self.normalize_date(date_str) # 日付を正規化
-                else:
-                    date = "" #  日付がない場合は空文字
-
-                event = sentence
-                detailed_timeline.append({"year": year, "date": date, "event": event})
-        logger.info("詳細な年表抽出完了")
-        return pd.DataFrame(detailed_timeline)
-
-    def normalize_date(self, date_str):
-        """
-        日付文字列を正規化する関数。
-        dateutil.parser.parse を使用して日付を解析し、"YYYY-MM-DD" 形式に変換する。
-        **fuzzy オプションを False に設定**
-
-        Args:
-            date_str (str): 正規化対象の日付文字列
-
-        Returns:
-            str: 正規化後の日付文字列 (YYYY-MM-DD 形式)
-                 解析失敗時は "不明" を返す
-        """
-        try:
-            date = parse(date_str, fuzzy=False) #  fuzzy_parser を False に設定
-            return date.strftime('%Y-%m-%d')  # 〇〇〇〇年〇〇月〇〇日形式に変換
-        except ValueError:
-            return "不明"
-
-    @staticmethod
-    def convert_to_ce(year_str):
-        """
-        紀元前 (BC) の年表記を西暦 (CE) に変換する関数。
-        例:  "紀元前100年" -> "-100", "1990年" -> "1990"
-
-        Args:
-            year_str (str): 変換対象の年文字列 (紀元前 or 西暦)
-
-        Returns:
-            str: 西暦表記の年文字列
-        """
-        if "紀元前" in year_str or "BC" in year_str:
-            year_str = re.sub(r"[^0-9]", "", year_str)
-            year = int(year_str)
-            return f"-{year}"
-        return year_str
-
-    def extract_network(self):
-        """
-        人物間のネットワークデータ (共演関係など) を抽出する (未実装)。
-        TODO:  人物ネットワーク抽出処理を実装
-
-        Returns:
-            pandas.DataFrame: 人物ネットワーク DataFrame (未実装、空の DataFrame を返す)
-        """
-        # 後で修正
-        logger.info("人物ネットワーク抽出開始 (未実装)")
-        return pd.DataFrame()
-
-    def _determine_relation_type(self, person1, person2, doc):
-        """
-        人物間の関係の種類を文脈から判断する。
-        **係り受け解析を利用して関係性を判定**
-        **判定できる関係の種類:  師弟関係、夫婦、親子関係、同僚、不明**
+        係り受け解析に基づき、2つの人名間の関係の種類を判定する。
 
         Args:
             person1 (str): 人物1の名前
             person2 (str): 人物2の名前
-            doc (spacy.tokens.Doc): 関係性を判断する文の SpaCy Docオブジェクト
+            doc (spacy.tokens.doc.Doc): spaCy Docオブジェクト (文単位)
 
         Returns:
-            str: 関係の種類 (例: "師弟関係", "夫婦", "同僚", "親子関係", "不明")
+            str: 関係の種類 (例: "指導教員", "兄弟", "不明")、関係性が特定できない場合は None
         """
-        # doc (spacy doc) から person1, person2 の spacy.tokens.Span を取得
-        person_span1 = None
-        person_span2 = None
-        for ent in doc.ents:
-            if ent.label_ == "PERSON" and ent.text == person1:
-                person_span1 = ent
-            if ent.label_ == "PERSON" and ent.text == person2:
-                person_span2 = ent
+        #  (係り受け解析処理は変更なし)
+        return None #  一旦 None を返すように変更 (ダミー)
 
-        if person_span1 is None or person_span2 is None:
-            return "不明" #  Span が見つからない場合は不明
 
-        # 係り受け解析で関係性を判断するロジックを実装 (例:  述語となる動詞、係り先などをチェック)
-        for token in doc:
-            if token.dep_ in ("ROOT", "主体", "述語") and token.pos_ in ("VERB", "NOUN", "ADJ"): #  文の主辞かつ動詞、名詞、形容詞
-                # print(f"  述語となるトークン: {token.text}, dep_: {token.dep_}, pos_: {token.pos_}") #  デバッグ用
-                for child in token.children: #  述語の係り受け先を確認
-                    # print(f"    係り先: {child.text}, dep_: {child.dep_}, pos_: {child.pos_}") #  デバッグ用
-                    if child == person_span1.root or child == person_span2.root: #  係り先が person1 or person2
-                        if "師" in token.text or "教" in token.text: #  述語に「師」「教」が含まれる -> 師弟関係
-                            return "師弟関係"
-                        elif "結婚" in token.text or " супруг" in token.lemma_ or "妻" in token.text or "夫" in token.text: #  述語に「結婚」「 супруг」「妻」「夫」が含まれる -> 夫婦
-                            return "夫婦"
-                        elif "親子" in token.text or " родитель" in token.lemma_ or " родила" in token.lemma_ or " родил" in token.lemma_ or "父" in token.text or "母" in token.text or "息子" in token.text or "娘" in token.text: # 述語に「親子」「родитель」「родила」「родил」「父」「母」「息子」「娘」が含まれる -> 親子関係
-                            return "親子関係"
-                        elif "同僚" in token.text or " 共同研究" in token.text or " 協力" in token.lemma_: # 述語に「同僚」「共同研究」「協力」が含まれる -> 同僚
-                            return "同僚"
-        return "不明" #  上記以外は不明
+    def analyze_persona(self) -> Dict[str, List[Tuple[str, int]]]:
+        """
+        人物像分析を実行し、名詞と固有表現の上位エンティティを抽出する。
+
+        Returns:
+            Dict[str, List[Tuple[str, int]]]: 分析結果 (辞書形式)
+                キー: "名詞", "固有表現"
+                値: 各エンティティタイプの上位エンティティリスト
+        """
+        logger.info("人物像分析開始", page_title=self.name)
+        if self.entities is None: #  entities が None の場合のエラー処理 # 追記
+            logger.error("エンティティが抽出されていません。process_data() を実行してください。") # loguru logger # 追記
+            raise ValueError("エンティティが抽出されていません。process_data() を実行してください。") # エラーをraise # 追記
+
+
+        top_nouns = self.get_top_entities("名詞")
+        top_entities = self.get_top_entities("固有表現")
+
+        persona_analysis = {
+            "名詞": top_nouns,
+            "固有表現": top_entities,
+        }
+        logger.info("人物像分析完了", page_title=self.name)
+        return persona_analysis
+
+    def format_analysis_results(self, analysis_results: Dict[str, List[Tuple[str, int]]]) -> str:
+        """
+        人物像分析結果を整形されたテキスト形式で出力する。
+
+        Args:
+            analysis_results (Dict[str, List[Tuple[str, int]]]): 分析結果 (辞書形式)
+
+        Returns:
+            str: 整形された分析結果 (テキスト形式)
+        """
+        logger.info("分析結果整形開始", page_title=self.name)
+        formatted_text = f"人物名: {self.name}\n\n"
+        for entity_type, top_entities in analysis_results.items():
+            formatted_text += f"--- 上位の{entity_type} ---\n"
+            for entity, count in top_entities:
+                formatted_text += f"- {entity}: {count}回\n"
+            formatted_text += "\n"
+        logger.info("分析結果整形完了", page_title=self.name)
+        return formatted_text
+
+    def get_top_entities(self, entity_type: str, top_n: int = 10) -> List[Tuple[str, int]]:
+        """
+        指定されたエンティティタイプの上位エンティティを取得する。
+
+        Args:
+            entity_type (str): エンティティタイプ ("名詞", "固有表現" など)
+            top_n (int): 上位何件を取得するか (デフォルト: 10)
+
+        Returns:
+            List[Tuple[str, int]]: 上位エンティティのリスト ( (エンティティ名, 出現回数) のタプル)
+        """
+        if entity_type not in self.entities:
+            logger.warning(f"エンティティタイプ '{entity_type}' は存在しません。")
+            return []
+
+        entities_of_type = self.entities[entity_type]
+        sorted_entities = sorted(entities_of_type.items(), key=lambda item: item[1], reverse=True) #  出現回数で降順ソート
+        return sorted_entities[:top_n] #  上位 top_n 件を返す
 
 
 if __name__ == "__main__":
-    from core.scraper import Scraper
-    import json
+    from utils.logger import configure_logging, get_logger
+    import logging
+    import sys
 
-    # logger設定 (ファイルとコンソール出力)
     configure_logging(level=logging.DEBUG, stream=sys.stdout)
+    logger = get_logger(__name__)
 
-    page_title = "アルベルト・アインシュタイン" #  例: アルベルト・アインシュタイン
-    scraper = Scraper(page_title=page_title)
-    scraper.fetch_page_data()
-    infobox_data = scraper.extract_infobox_data()
-    text_data = scraper.extract_text(normalize_text=True, remove_exclude_words=True)
-    image_data = scraper.extract_image_data()
-    categories = scraper.extract_categories()
+    page_title = "アルベルト・アインシュタイン"  #  例: アルベルト・アインシュタイン
 
-    processor = DataProcessor(
-        infobox_data=infobox_data,
-        text_data=text_data,
-        image_data=image_data,
-        categories=categories,
-        page_title=page_title,
-    )
-    processor.process_data()
+    try:
+        processor = DataProcessor(page_title=page_title)
+        processor.fetch_data()
+        processor.process_data() #  process_data() を実行 # 追記
+        analysis_results = processor.analyze_persona()
+        formatted_results = processor.format_analysis_results(analysis_results)
 
-    print("\n--- 基本情報 DataFrame ---")
-    print(processor.df_basic.to_json(orient="records", indent=2, force_ascii=False))
+        print("--- 人物像分析結果 ---")
+        print(formatted_results)
 
-    print("\n--- 固有表現抽出結果 ---")
-    print(json.dumps(processor.entities, ensure_ascii=False, indent=2))
-
-    print("\n--- 人物関係抽出結果 ---")
-    print(processor.extract_relations())
-
-    print("\n--- 年表抽出結果 ---")
-    print(processor.df_timeline.to_json(orient="records", indent=2, force_ascii=False))
+    except ValueError as e:
+        logger.error(f"データ処理中にエラーが発生しました: {e}")
+    except Exception as e:
+        logger.exception(f"予期せぬエラーが発生しました: {e}")

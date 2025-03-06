@@ -30,7 +30,7 @@ class Analyzer:
         self.df_timeline = df_timeline
         self.df_network = df_network
         self.graph = None  # 関係ネットワークのグラフ (NetworkX)
-        self.nlp = spacy.load("ja_core_news_md")
+        self.nlp = spacy.load("ja_ginza_bert_large")
         self.mecab = MeCab.Tagger("-Owakati")  # MeCab Wakati Taggerを初期化
         logger.debug("Analyzerオブジェクトを初期化しました (spaCy ja_core_news_md, MeCab使用)。")
 

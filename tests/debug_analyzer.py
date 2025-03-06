@@ -1,110 +1,232 @@
-from core.scraper import Scraper
 from core.data_processor import DataProcessor
-# from core.analyzer import Analyzer
-import json
-from utils.logger import configure_logging, get_logger #  logger.py (loguru 版) の import に変更
+from core.scraper import Scraper
+from utils.logger import configure_logging, get_logger
 import logging
 import sys
+import json
+import os
+from pathlib import Path
+import importlib
+import core.data_processor
 
-configure_logging(level="DEBUG", stream=sys.stdout) #  logger.py (loguru 版) の configure_logging を使用
-logger = get_logger(__name__) #  logger.py (loguru 版) の get_logger を使用
+importlib.reload(core.data_processor)
+configure_logging(level=logging.DEBUG, stream=sys.stdout)
+logger = get_logger(__name__)
+
+# データ保存用ディレクトリ
+DATA_DIR = "data"
+
+def create_data_directory():
+    """データ保存用ディレクトリを作成する。"""
+    data_dir_path = Path(DATA_DIR)
+    if not data_dir_path.exists():
+        data_dir_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"データディレクトリを作成しました: {DATA_DIR}")
+    else:
+        logger.info(f"データディレクトリは既に存在します: {DATA_DIR}")
 
 
-def debug_analyze_persona(page_title):  # 関数化 # 追記
+def debug_analyze_persona(page_title):
     """
-    analyzer.py の人物像分析機能 (analyze_persona) をデバッグする関数 (debug_analyzer.py).
+    人物像分析のデバッグ用関数。
+    指定されたページタイトルの人物像分析を行い、結果をログとJSONファイルに出力する。
 
     Args:
-        page_title (str): Wikipedia ページタイトル
+        page_title (str): Wikipediaのページタイトル
     """
-    logger.info(f"人物像分析デバッグ開始: ページタイトル = {page_title}") #  loguru の logger を使用 # 修正
+    logger.info(f"人物像分析デバッグ開始: {page_title}")
 
     try:
-        # 1. スクレイピング
+        # DataProcessorの初期化 (page_titleのみを渡す)  # 修正:  page_title のみ
+        processor = DataProcessor(page_title=page_title)
+
+        # データ取得と処理を実行
+        processor.fetch_data() #  fetch_data() を実行 # 修正
+        processor.process_data()
+
+        # 分析結果を取得
+        analysis_results = processor.analyze_persona()
+        formatted_results = processor.format_analysis_results(analysis_results)
+
+        logger.info(f"人物像分析結果:\n{formatted_results}")
+
+        # JSONファイルに結果を保存
+        output_file = Path(DATA_DIR) / f"persona_analysis_{page_title}.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(analysis_results, f, indent=2, ensure_ascii=False)
+        logger.info(f"分析結果をJSONファイルに保存しました: {output_file}")
+
+    except ValueError as ve:
+        logger.error(f"ValueError: {ve}")
+        logger.error(f"人物像分析デバッグ中にエラーが発生しました: {ve}") #  エラーメッセージを修正
+    except Exception as e:
+        logger.exception(f"予期せぬエラーが発生しました: {e}")
+        logger.error(f"人物像分析デバッグ中にエラーが発生しました: {e}") #  エラーメッセージを修正
+    finally:
+        logger.info(f"人物像分析デバッグ終了: {page_title}")
+
+
+def debug_create_basic_info_dataframe(page_title):
+    """
+    基本情報DataFrame作成デバッグ用関数。
+
+    Args:
+        page_title (str): Wikipediaのページタイトル
+    """
+    logger.info(f"基本情報DataFrame作成デバッグ開始: {page_title}")
+    try:
         scraper = Scraper(page_title=page_title)
         scraper.fetch_page_data()
         infobox_data = scraper.extract_infobox_data()
-        text_data = scraper.extract_text(
-            normalize_text=True, remove_exclude_words=True
-        )  # テキスト整形 + 除外ワード除去あり
         image_data = scraper.extract_image_data()
         categories = scraper.extract_categories()
+        text_data = scraper.extract_text() #  text_data を取得 # 追記
 
-        logger.debug("スクレイピングデータ:") #  loguru の logger を使用 # 修正
-        logger.debug(f"infobox_data: {infobox_data}") #  loguru の logger を使用 # 修正
-        logger.debug(
-            f"text_data: [first section heading] {text_data['headings_and_text'][0].get('heading_text', '見出しなし')}, [first section text (一部)] {text_data['headings_and_text'][0]['text_content'][:100]}..."
-        ) #  loguru の logger を使用 # 修正
-        logger.debug(f"image_data: {image_data}") #  loguru の logger を使用 # 修正
-        logger.debug(f"categories: {categories}") #  loguru の logger を使用 # 修正
+        # DataProcessor を初期化 (page_title のみ) # 修正: page_title のみ
+        processor = DataProcessor(page_title=page_title)
+        processor.infobox_data = infobox_data #  データ属性に値を設定 # 追記
+        processor.image_data = image_data #  データ属性に値を設定 # 追記
+        processor.categories = categories #  データ属性に値を設定 # 追記
+        processor.text_data = text_data #  データ属性に値を設定 # 追記
 
-        # 2. データプロセッサー
-        processor = DataProcessor(
-            infobox_data=infobox_data,
-            text_data=text_data,
-            image_data=image_data,
-            categories=categories,
-            page_title=page_title,
-        )
-        logger.debug(f"image_dataの内容 (process_data() 呼び出し前): {image_data}") #  loguru logger を使用 # 追加
-        processor.process_data()
 
-        logger.debug("データプロセッサー処理後データ:") #  loguru の logger を使用 # 修正
-        logger.debug(
-            f"df_basic: {processor.df_basic.to_json(orient='records', indent=2, force_ascii=False)}"
-        ) #  loguru の logger を使用 # 修正
-        logger.debug(
-            f"entities: {json.dumps(processor.entities, ensure_ascii=False, indent=2)}"
-        ) #  loguru の logger を使用 # 修正
-        logger.debug(
-            f"relations: {processor.extract_relations()}"
-        ) #  loguru の logger を使用 # 修正
-        logger.debug(
-            f"df_timeline: {processor.df_timeline.to_json(orient='records', indent=2, force_ascii=False)}"
-        ) #  loguru の logger を使用 # 修正
+        df_basic = processor.create_basic_info_dataframe()
 
-        # 3. Analyzer (analyzer.py 実装後に uncomment) # 修正
-        # analyzer = Analyzer(wikipedia_url=scraper.wikipedia_url) #  Analyzer オブジェクト作成
-        # combined_text_data = processor.concatenate_text_data() # テキストデータ結合
-        # ranking = analyzer.analyze_word_frequency(combined_text_data) # 頻度分析
-        # persona_keywords = analyzer.extract_persona_keywords(ranking) # 人物像キーワード抽出
-        # persona_description = "、".join(persona_keywords)
+        logger.info(f"基本情報DataFrame:\n{df_basic.to_string()}")
 
-        # logger.info("\n--- 頻度分析ランキング ---") #  info ログ出力 # 追記
-        # for i, (word, count) in enumerate(ranking[:10]): # 上位10件を表示
-        #     logger.info(f"{i+1}位: {word} ({count}回)") #  info ログ出力 # 追記
-
-        # logger.info("\n--- 人物像キーワード ---") #  info ログ出力 # 追記
-        # logger.info(persona_description) #  info ログ出力 # 追記
-
-        logger.info("\n--- 基本情報 DataFrame (JSON) ---") #  info ログ出力 # 追記
-        logger.info(
-            processor.df_basic.to_json(
-                orient="records", indent=2, force_ascii=False
-            )
-        ) #  info ログ出力 # 追記
-
-        logger.info("\n--- 固有表現抽出結果 (JSON) ---") #  info ログ出力 # 追記
-        logger.info(
-            json.dumps(processor.entities, ensure_ascii=False, indent=2)
-        ) #  info ログ出力 # 追記
-
-        logger.info("\n--- 人物関係抽出結果 ---") #  info ログ出力 # 追記
-        logger.info(processor.extract_relations()) #  info ログ出力 # 追記
-
-        logger.info("\n--- 年表抽出結果 (JSON) ---") #  info ログ出力 # 追記
-        logger.info(
-            processor.df_timeline.to_json(
-                orient="records", indent=2, force_ascii=False
-            )
-        ) #  info ログ出力 # 追記
-
-        logger.info(f"人物像分析デバッグ完了: ページタイトル = {page_title}") #  loguru の logger を使用 # 修正
+        # JSONファイルにDataFrameを保存
+        output_file = Path(DATA_DIR) / f"basic_info_dataframe_{page_title}.json"
+        df_basic.to_json(output_file, orient="records", indent=2, force_ascii=False)
+        logger.info(f"基本情報DataFrameをJSONファイルに保存しました: {output_file}")
 
     except Exception as e:
-        logger.exception(f"人物像分析デバッグ中にエラーが発生しました: {e}") #  loguru の exception() で例外情報を出力 # 修正
+        logger.exception(f"基本情報DataFrame作成中にエラーが発生しました: {e}")
+    finally:
+        logger.info(f"基本情報DataFrame作成デバッグ終了: {page_title}")
+
+
+def debug_extract_timeline(page_title):
+    """
+    年表抽出デバッグ用関数 (headings_and_text 出力)。
+
+    Args:
+        page_title (str): Wikipediaのページタイトル
+    """
+    logger.info(f"年表抽出デバッグ開始 (headings_and_text 出力): {page_title}") #  ログメッセージを修正
+    try:
+        scraper = Scraper(page_title=page_title)
+        scraper.fetch_page_data()
+        text_data = scraper.extract_text(normalize_text=True, remove_exclude_words=True)
+
+        # DataProcessor を初期化 (scraper オブジェクトを渡す)
+        processor = DataProcessor(page_title=page_title)
+        processor.text_data = text_data #  text_data を設定 # 追記
+        processor.process_data() # process_data() を実行して headings_and_text を生成
+
+        #  headings_and_text の内容をログ出力 # 追記
+        logger.info("headings_and_text の内容:") # 追記
+        for heading, text in processor.headings_and_text.items(): # 追記
+            logger.info(f"見出し: {heading}") # 追記
+            logger.info(f"テキスト: {text[:200]}...") #  先頭 200 文字だけ出力 # 追記
+
+        df_timeline = processor.extract_timeline() #  年表抽出関数は一旦コメントアウト
+
+        logger.info(f"年表DataFrame:\n{df_timeline.to_string()}") #  年表 DataFrame のログ出力も一旦コメントアウト
+
+        # JSONファイルにDataFrameを保存 (一旦コメントアウト)
+        # output_file = Path(DATA_DIR) / f"timeline_dataframe_{page_title}.json"
+        # df_timeline.to_json(output_file, orient="records", indent=2, force_ascii=False)
+        # logger.info(f"年表DataFrameをJSONファイルに保存しました: {output_file}")
+
+    except Exception as e:
+        logger.exception(f"年表抽出中にエラーが発生しました: {e}")
+    finally:
+        logger.info(f"年表抽出デバッグ終了 (headings_and_text 出力): {page_title}") #  ログメッセージを修正
+
+
+def debug_extract_entities(page_title):
+    """
+    固有表現抽出デバッグ用関数。
+
+    Args:
+        page_title (str): Wikipediaのページタイトル
+    """
+    logger.info(f"固有表現抽出デバッグ開始: {page_title}")
+    try:
+        scraper = Scraper(page_title=page_title)
+        scraper.fetch_page_data()
+        text_data = scraper.extract_text(normalize_text=True, remove_exclude_words=True)
+
+        # DataProcessor を初期化 (page_title のみ) # 修正: page_title のみ
+        processor = DataProcessor(page_title=page_title)
+        processor.text_data = text_data #  text_data を設定 # 追記
+
+
+        entities = processor.extract_entities()
+
+        logger.info(f"固有表現抽出結果:\n{json.dumps(entities, ensure_ascii=False, indent=2)}")
+
+        # JSONファイルに結果を保存
+        output_file = Path(DATA_DIR) / f"entities_{page_title}.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(entities, f, indent=2, ensure_ascii=False)
+        logger.info(f"固有表現抽出結果をJSONファイルに保存しました: {output_file}")
+
+
+    except Exception as e:
+        logger.exception(f"固有表現抽出中にエラーが発生しました: {e}")
+    finally:
+        logger.info(f"固有表現抽出デバッグ終了: {page_title}")
+
+
+def debug_extract_relations(page_title):
+    """
+    人物関係抽出デバッグ用関数。
+
+    Args:
+        page_title (str): Wikipediaのページタイトル
+    """
+    logger.info(f"人物関係抽出デバッグ開始: {page_title}")
+    try:
+        scraper = Scraper(page_title=page_title)
+        scraper.fetch_page_data()
+        text_data = scraper.extract_text(normalize_text=True, remove_exclude_words=True)
+        infobox_data = scraper.extract_infobox_data() #  infobox_data を取得 # 追記
+        image_data = scraper.extract_image_data() #  image_data を取得 # 追記
+        categories = scraper.extract_categories() #  categories を取得 # 追記
+
+        # DataProcessor を初期化 (page_title のみ) # 修正: page_title のみ
+        processor = DataProcessor(page_title=page_title)
+        processor.text_data = text_data #  text_data を設定 # 追記
+        processor.infobox_data = infobox_data #  infobox_data を設定 # 追記
+        processor.image_data = image_data #  image_data を設定 # 追記
+        processor.categories = categories #  categories を設定 # 追記
+        processor.process_data() #  process_data() を実行 # 追記
+
+
+        relations = processor.extract_relations()
+
+        logger.info(f"人物関係抽出結果:\n{relations}") #  JSON 形式ではなくそのまま表示
+
+        # JSONファイルに結果を保存
+        output_file = Path(DATA_DIR) / f"relations_{page_title}.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(relations, f, indent=2, ensure_ascii=False)
+        logger.info(f"人物関係抽出結果をJSONファイルに保存しました: {output_file}")
+
+    except Exception as e:
+        logger.exception(f"人物関係抽出中にエラーが発生しました: {e}")
+    finally:
+        logger.info(f"人物関係抽出デバッグ終了: {page_title}")
 
 
 if __name__ == "__main__":
-    page_title = "アルベルト・アインシュタイン"  # 例: アルベルト・アインシュタイン
-    debug_analyze_persona(page_title)  # debug_analyze_persona 関数を実行 # 追記
+    page_title = "スティーブ・ジョブズ"
+
+    create_data_directory()
+
+    # debug_analyze_persona(page_title)  # debug_analyze_persona 関数を実行 # 追記
+    # debug_create_basic_info_dataframe(page_title) # debug_create_basic_info_dataframe 関数を実行 # 追記
+    debug_extract_timeline(page_title) # debug_extract_timeline 関数を実行 # 追記
+    # debug_extract_entities(page_title) # debug_extract_entities 関数を実行 # 追記
+    # debug_extract_relations(page_title) # debug_extract_relations 関数を実行 # 追記

@@ -2,13 +2,13 @@ import requests
 from bs4 import BeautifulSoup, Comment, Tag
 import re
 import unicodedata
-from utils.logger import configure_logging, get_logger, log_message
+from utils.logger import configure_logging, get_logger #  import を修正: log_message を削除
 import logging
 import sys
 
+configure_logging(level="INFO", stream=sys.stdout) #  configure_logging を呼び出し (DEBUGレベル, 標準出力)
+logger = get_logger(__name__) #  ロガーを取得
 
-configure_logging(level=logging.INFO, stream=sys.stdout)
-logger = get_logger(__name__)
 
 class Scraper:
     """
@@ -28,9 +28,9 @@ class Scraper:
             - フォーム: form, input, textarea, select, button, label, fieldset, legend, option, optgroup, datalist, keygen, output, progress, meter
             - フレーム: iframe, frame, frameset
             - その他:  annotation, annotation-xml, applet, area, base, basefont, bgsound, blink, body, button, dir, embed, font, frame, frameset, head, html, isindex, keygen, link, map, marquee, menu, menuitem, meta, nobr, noembed, noframes, object, param, portal, rb, rtc, shadow, slot, spacer, strike, style, tt, u, var, template, xml, xmp
-        exclude_words: list[str]
-            本文から削除する不要なキーワードのリスト。
-            例:  "編集" (Wikipediaの編集リンク) など
+    exclude_words: list[str]
+        本文から削除する不要なキーワードのリスト。
+        例:  "編集" (Wikipediaの編集リンク) など
     """
 
     BASE_URL = "https://ja.wikipedia.org/w/api.php"  # 日本語版WikipediaのAPIエンドポイント
@@ -39,6 +39,8 @@ class Scraper:
         "sup", "style", "scope", "typeof", "strong",
     ]  #  必要に応じてリストを調整 (docstringで説明追加)
     exclude_words = ["編集"]  #  必要に応じてリストに追加
+    excluded_section_keywords = ["著作", "参考文献", "関連文献", "外部リンク", "作品", "書誌情報",
+                                "参考文献", "選集", "全集", "共著", "脚注", "注釈", "出典", "関連項目"] #  クラス変数として定義 # 追記
 
 
     def __init__(self, page_title, wikipedia_url=None):
@@ -49,10 +51,11 @@ class Scraper:
             page_title (str): スクレイピング対象の Wikipedia ページタイトル
             wikipedia_url (str, optional): Wikipedia ページの URL. Defaults to None.
         """
+        self.soup = None
         self.page_title = page_title
         self.wikipedia_url = wikipedia_url or f"https://ja.wikipedia.org/wiki/{page_title}"
         self.session = requests.Session() #  requests Session を初期化 # 追記
-        log_message('debug', "Scraperオブジェクトを初期化しました。", page_title=page_title) #  log_message を使用 # 修正
+        logger.debug("Scraperオブジェクトを初期化しました。", page_title=page_title) #  loguru logger を使用 # 修正
         self.page_content = None #  ページコンテンツを格納する変数 # 追記
         self.infobox_data = {}
         self.text_data = {}
@@ -66,46 +69,45 @@ class Scraper:
 
         Raises:
             ValueError: Wikipedia APIエラー、ページが見つからない場合、
-                            またはリクエストエラーが発生した場合。
+                        またはリクエストエラーが発生した場合。
         """
-        with start_action(action_type="fetch_page_data", page_title=self.page_title) as action:  # 修正
-            log_message("info", f"ページデータ取得開始: {self.page_title}")  # 修正
-            params = {
-                "action": "parse",  # parseに変更
-                "format": "json",
-                "page": self.page_title,
-                "prop": "text",  # textのみ取得
-                "redirects": "true"
-            }
+        logger.info("ページデータ取得開始", page_title=self.page_title)  # loguru logger を使用 # 修正
+        params = {
+            "action": "parse",  # parseに変更
+            "format": "json",
+            "page": self.page_title,
+            "prop": "text",  # textのみ取得
+            "redirects": "true"
+        }
 
-            try:
-                response = requests.get(self.BASE_URL, params=params)
-                response.raise_for_status()
-                data = response.json()
-                log_message("debug", f"APIレスポンス: {data}")  # 修正
+        try:
+            response = requests.get(self.BASE_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+            logger.debug(f"APIレスポンス: {data}")  # loguru logger を使用 # 修正
 
-                if "error" in data:
-                    error_info = data["error"]["info"]
-                    log_message("error", f"Wikipedia APIエラー: {error_info}")  # 修正
-                    raise ValueError(f"Wikipedia APIエラー: {error_info}")  # エラーメッセージ簡略化
+            if "error" in data:
+                error_info = data["error"]["info"]
+                logger.error(f"Wikipedia APIエラー: {error_info}")  # loguru logger を使用 # 修正
+                raise ValueError(f"Wikipedia APIエラー: {error_info}")  # エラーメッセージ簡略化
 
-                if "parse" not in data:
-                    log_message("error", f"ページが見つかりません: {self.page_title}")  # 修正
-                    raise ValueError(f"ページが見つかりません: {self.page_title}")  # エラーメッセージ簡略化
+            if "parse" not in data:
+                logger.error(f"ページが見つかりません: {self.page_title}")  # loguru logger を使用 # 修正
+                raise ValueError(f"ページが見つかりません: {self.page_title}")  # エラーメッセージ簡略化
 
-                self.page_id = data["parse"]["pageid"]
-                self.html_content = data["parse"]["text"]["*"]
-                log_message("info", f"ページデータを取得しました。ページID: {self.page_id}")  # 修正
-                action.add_success()  # 追加
+            self.page_id = data["parse"]["pageid"]
+            self.html_content = data["parse"]["text"]["*"]
+            logger.info("ページデータを取得しました。", page_id=self.page_id)  # loguru logger を使用 # 修正
 
-            except requests.exceptions.RequestException as e:
-                log_message("error", f"リクエストエラー: {e}")  # 修正
-                self.page_id = None  # エラー時にも page_id を初期化
-                raise ValueError(f"リクエストエラー: {e}") from e
-            except ValueError as e:  # 追加
-                log_message("error", f"ValueError: {e}")  # 修正
-                self.page_id = None
-                raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"リクエストエラー: {e}")  # loguru logger を使用 # 修正
+            self.page_id = None  # エラー時にも page_id を初期化
+            raise ValueError(f"リクエストエラー: {e}") from e
+        except ValueError as e:  # 追加
+            logger.error(f"ValueError: {e}")  # loguru logger を使用 # 修正
+            self.page_id = None
+            raise
+
 
     def _extract_text_from_cell(self, cell: BeautifulSoup) -> str:
         """
@@ -148,23 +150,54 @@ class Scraper:
 
         return text
 
+    def _remove_excluded_sections(self, headings_and_text: list) -> list:
+        """
+        見出しリストから不要なセクションを削除する (private method)。
+        セクション見出しに excluded_section_keywords に含まれるキーワードが含まれるセクションを削除する。
+
+        Args:
+            headings_and_text (list): 見出しと本文テキストのペアを格納したリスト
+
+        Returns:
+            list: 不要なセクション削除後の見出しと本文テキストのペアを格納したリスト
+        """
+        logger.debug("不要セクション削除開始")  # loguru logger を使用 # 追記
+        excluded_section_keywords = Scraper.excluded_section_keywords  # クラス変数として定義 # 追記
+        processed_headings_and_text = []
+        for section in headings_and_text:
+            heading_text = section["heading_text"]  # キーを "heading_text" に修正
+            #  セクション見出しが排除キーワードを含む場合はスキップ
+            if any(keyword in heading_text for keyword in excluded_section_keywords):
+                logger.debug(f"セクション '{heading_text}' を排除")  # 追記
+                continue  # スキップ
+
+            #  sub_sections も再帰的に処理 # 追記
+            sub_sections = section.get("sub_sections", [])  # sub_sections が存在しない場合は空リストを代入 # 追記
+            processed_sub_sections = self._remove_excluded_sections(sub_sections)  # 追記
+
+            section["sub_sections"] = processed_sub_sections  # 処理後の sub_sections で更新 # 追記
+            processed_headings_and_text.append(section)  # 排除しないセクションを追加
+
+        logger.debug("不要セクション削除完了")  # loguru logger を使用 # 追記
+        return processed_headings_and_text
+
     def extract_infobox_data(self) -> dict:
         """
         Beautiful SoupでHTMLから基本情報(infobox)を抽出する。
 
         Returns:
             dict: 抽出した基本情報 (辞書形式)
-                   キー: infoboxの項目名、値: 項目に対応するテキストデータ (辞書形式)
-                   "名前" キーは特別に、{"名前": "記事タイトル名"} の形式で格納される。
-                   infobox が存在しない場合は空の辞書を返す。
+                キー: infoboxの項目名、値: 項目に対応するテキストデータ (辞書形式)
+                "名前" キーは特別に、{"名前": "記事タイトル名"} の形式で格納される。
+                infobox が存在しない場合は空の辞書を返す。
 
         Raises:
             ValueError: HTMLコンテンツが取得できていない場合。
                         fetch_page_data() を実行する必要がある。
         """
-        logger.info("基本情報抽出開始")
+        logger.info("基本情報抽出開始") # loguru logger を使用 # 修正
         if not self.html_content:
-            logger.error("HTMLコンテンツがありません。fetch_page_data()を先に実行してください。")
+            logger.error("HTMLコンテンツがありません。fetch_page_data()を先に実行してください。") # loguru logger を使用 # 修正
             raise ValueError("fetch_page_data()を先に実行してください。")
 
         soup = BeautifulSoup(self.html_content, "lxml")  # lxml
@@ -202,7 +235,7 @@ class Scraper:
                             data[key] = [data[key]] + (
                                 value if isinstance(value, list) else [value]
                             )
-                    continue  # 次の行
+                        continue  # 次の行
                 # th, tdがある場合
                 if header and value_cell:
                     key = header.get_text(strip=True)
@@ -212,7 +245,7 @@ class Scraper:
         else:
             # infoboxがない場合、ページタイトルを名前に設定
             data["名前"] = {"名前": self.page_title}
-        logger.info("基本情報抽出完了")
+        logger.info("基本情報抽出完了") # loguru logger を使用 # 修正
         return data
 
     def extract_image_data(self) -> list:
@@ -221,18 +254,18 @@ class Scraper:
 
         Returns:
             list: 抽出した画像データのリスト (辞書形式)
-                   [
-                       {"image_url": "画像のURL", "alt_text": "画像のaltテキスト"},
-                       ...
-                   ]
+                [
+                    {"image_url": "画像のURL", "alt_text": "画像のaltテキスト"},
+                    ...
+                ]
 
         Raises:
             ValueError: HTMLコンテンツが取得できていない場合。
                         fetch_page_data() を実行する必要がある。
         """
-        logger.info("画像データ抽出開始")
+        logger.info("画像データ抽出開始") # loguru logger を使用 # 修正
         if not self.html_content:
-            logger.error("HTMLコンテンツがありません。fetch_page_data()を先に実行してください。")
+            logger.error("HTMLコンテンツがありません。fetch_page_data()を先に実行してください。") # loguru logger を使用 # 修正
             raise ValueError("fetch_page_data()を先に実行してください。")
 
         soup = BeautifulSoup(self.html_content, "lxml")
@@ -244,7 +277,7 @@ class Scraper:
             alt_text = img.get("alt")
             image_data_list.append({"image_url": image_url, "alt_text": alt_text})
 
-        logger.info("画像データ抽出完了")
+        logger.info("画像データ抽出完了") # loguru logger を使用 # 修正
         return image_data_list
 
     def extract_categories(self) -> list:
@@ -253,16 +286,16 @@ class Scraper:
 
         Returns:
             list: 抽出したカテゴリデータのリスト (文字列形式)
-                   例: ["カテゴリ1", "カテゴリ2", ...]
-                   カテゴリが存在しない場合は空のリストを返す。
+                例: ["カテゴリ1", "カテゴリ2", ...]
+                カテゴリが存在しない場合は空のリストを返す。
 
         Raises:
             ValueError: HTMLコンテンツが取得できていない場合。
                         fetch_page_data() を実行する必要がある。
         """
-        logger.info("カテゴリデータ抽出開始")
+        logger.info("カテゴリデータ抽出開始") # loguru logger を使用 # 修正
         if not self.html_content:
-            logger.error("HTMLコンテンツがありません。fetch_page_data()を先に実行してください。")
+            logger.error("HTMLコンテンツがありません。fetch_page_data()を先に実行してください。") # loguru logger を使用 # 修正
             raise ValueError("fetch_page_data()を先に実行してください。")
 
         soup = BeautifulSoup(self.html_content, "lxml")
@@ -274,7 +307,7 @@ class Scraper:
             if category_text:
                 categories.append(category_text)
 
-        logger.info("カテゴリデータ抽出完了")
+        logger.info("カテゴリデータ抽出完了") # loguru logger を使用 # 修正
         return categories
 
 
@@ -289,19 +322,19 @@ class Scraper:
 
         Returns:
             dict: 見出しと本文を格納した辞書。
-                   キー: "headings_and_text"
-                   値: 見出しと本文テキストのペアを格納したリスト (辞書形式)。
-                        [
-                            {"heading": "見出し1", "text": "本文1"},
-                            {"heading": "見出し2", "text": "本文2"},
-                            ...
-                        ]
+                キー: "headings_and_text"
+                値: 見出しと本文テキストのペアを格納したリスト (辞書形式)。
+                    [
+                        {"heading": "見出し1", "text": "本文1"},
+                        {"heading": "見出し2", "text": "本文2"},
+                        ...
+                    ]
 
         Raises:
             ValueError: HTMLコンテンツが取得できていない場合。
                         fetch_page_data() を実行する必要がある。
         """
-        logger.info("本文と見出し抽出開始 (改良版)")
+        logger.info("本文と見出し抽出開始 (改良版)") # loguru logger を使用 # 修正
         if not self.html_content:
             raise ValueError("fetch_page_data() を先に実行してください。")
 
@@ -312,6 +345,7 @@ class Scraper:
 
         # 見出しと本文を抽出
         headings_and_text = self._extract_headings_and_body(soup)
+        headings_and_text = self._remove_excluded_sections(headings_and_text)
 
         #  テキスト後処理 (正規化、セクション編集リンク削除、脚注・出典記号削除、全角スペース変換)
         if normalize_text: # オプションで正規化処理をON/OFF
@@ -323,7 +357,7 @@ class Scraper:
         if remove_exclude_words: # オプションで不要ワード削除処理をON/OFF
             full_text_content_list = self._remove_exclude_words(full_text_content_list)
 
-        logger.info("本文と見出し抽出完了 (改良版)")
+        logger.info("本文と見出し抽出完了 (改良版)") # loguru logger を使用 # 修正
         return {"headings_and_text": full_text_content_list} #  リスト形式でheadings_and_textを返す
 
 
@@ -334,13 +368,13 @@ class Scraper:
             soup (BeautifulSoup): HTMLのBeautifulSoupオブジェクト
         """
         unnecessary_tags = Scraper.unnecessary_tags # クラス変数として定義
-        logger.debug("不要要素削除開始") #  debugログ追加
+        logger.debug("不要要素削除開始")  # loguru logger を使用 # 修正
         for tag_name in unnecessary_tags:
             for tag in soup.find_all(tag_name):
                 tag.decompose()
         for element in soup.find_all(string=lambda text: isinstance(text, Comment)):
             element.extract()
-        logger.debug("不要要素削除完了")
+        logger.debug("不要要素削除完了") # loguru logger を使用 # 修正
 
     def _extract_headings_and_body(self, soup: BeautifulSoup) -> list:
         """HTMLから見出しと本文を階層的に抽出 (h2, h3, h4対応)
@@ -350,33 +384,33 @@ class Scraper:
 
         Returns:
             list: 見出しと本文テキストのペアを階層的に格納したリスト (辞書形式)
-                  [
-                      {
-                          "heading_level": "h2",
-                          "heading_text": "h2 見出し1",
-                          "text_content": "h2 本文1",
-                          "sub_sections": [
-                              {
-                                  "heading_level": "h3",
-                                  "heading_text": "h3 見出し1-1",
-                                  "text_content": "h3 本文1-1",
-                                  "sub_sections": [
-                                      {
-                                          "heading_level": "h4",
-                                          "heading_text": "h4 見出し1-1-1",
-                                          "text_content": "h4 本文1-1-1",
-                                          "sub_sections": []
-                                      },
-                                      ...
-                                  ]
-                              },
-                              ...
-                          ]
-                      },
-                      ...
-              ]
+                    [
+                        {
+                            "heading_level": "h2",
+                            "heading_text": "h2 見出し1",
+                            "text_content": "h2 本文1",
+                            "sub_sections": [
+                                {
+                                    "heading_level": "h3",
+                                    "heading_text": "h3 見出し1-1",
+                                    "text_content": "h3 本文1-1",
+                                    "sub_sections": [
+                                        {
+                                            "heading_level": "h4",
+                                            "heading_text": "h4 見出し1-1-1",
+                                            "text_content": "h4 本文1-1-1",
+                                            "sub_sections": []
+                                        },
+                                        ...
+                                    ]
+                                },
+                                ...
+                            ]
+                        },
+                        ...
+                    ]
         """
-        logger.debug("階層的な見出しと本文抽出開始 (h2, h3, h4対応)")
+        logger.debug("階層的な見出しと本文抽出開始 (h2, h3, h4対応)") # loguru logger を使用 # 修正
         headings_and_text = []
         heading_divs_h2 = soup.find_all('div', class_='mw-heading mw-heading2')  # h2レベルの div.mw-heading を取得
 
@@ -421,7 +455,7 @@ class Scraper:
                 "sub_sections": sub_sections_h3 #  抽出した h3 セクションを格納
             })
 
-        logger.debug("階層的な見出しと本文抽出完了 (h2, h3, h4対応)")
+        logger.debug("階層的な見出しと本文抽出完了 (h2, h3, h4対応)") # loguru logger を使用 # 修正
         return headings_and_text
 
 
@@ -433,24 +467,24 @@ class Scraper:
 
         Returns:
             list: h3レベルの見出しと本文テキストのペアを階層的に格納したリスト (辞書形式)
-                  [
-                      {
-                          "heading_level": "h3",
-                          "heading_text": "h3 見出し1-1",
-                          "text_content": "h3 本文1-1",
-                          "sub_sections": [ # h4 セクション
-                              {
-                                  "heading_level": "h4",
-                                  "heading_text": "h4 見出し1-1-1",
-                                  "text_content": "h4 本文1-1-1",
-                                  "sub_sections": []
-                              },
-                              ...
-                          ]
-                      },
-                      ...
-                  ]
-            """
+                    [
+                        {
+                            "heading_level": "h3",
+                            "heading_text": "h3 見出し1-1",
+                            "text_content": "h3 本文1-1",
+                            "sub_sections": [ # h4 セクション
+                                {
+                                    "heading_level": "h4",
+                                    "heading_text": "h4 見出し1-1-1",
+                                    "text_content": "h4 本文1-1-1",
+                                    "sub_sections": []
+                                },
+                                ...
+                            ]
+                        },
+                        ...
+                    ]
+        """
         sub_sections_h3_data = []
         h3_tag = heading_div_h3.find('h3')
         if h3_tag:
@@ -501,13 +535,13 @@ class Scraper:
 
         Returns:
             dict: h4レベルの見出しと本文テキストのペアを格納した辞書 (辞書形式)
-              {
-                  "heading_level": "h4",
-                  "heading_text": "h4 見出し1-1-1",
-                  "text_content": "h4 本文1-1-1",
-                  "sub_sections": [] # h4 より深い階層はないので空リスト
-              }
-    """
+                {
+                    "heading_level": "h4",
+                    "heading_text": "h4 見出し1-1-1",
+                    "text_content": "h4 本文1-1-1",
+                    "sub_sections": [] # h4 より深い階層はないので空リスト
+                }
+        """
         sub_section_h4_data = {} #  辞書型で初期化
         h4_tag = heading_div_h4.find('h4')
         if h4_tag:
@@ -550,7 +584,7 @@ class Scraper:
         Returns:
             list: 後処理後の見出しと本文テキストのペアを格納したリスト
         """
-        logger.debug("テキスト後処理開始") #  debugログ追加
+        logger.debug("テキスト後処理開始")  # loguru logger を使用 # 修正
         processed_headings_and_text = []
         for section in headings_and_text:
             heading_text = section["heading_text"] #  キーを "heading_text" に修正
@@ -582,7 +616,7 @@ class Scraper:
                 "text_content": text_content, #  キーを "text_content" に修正
                 "sub_sections": self._post_process_text(section["sub_sections"]) if section.get("sub_sections") else [] #  sub_sectionsに対しても再帰的に後処理
             })
-        logger.debug("テキスト後処理完了") #  debugログ追加
+        logger.debug("テキスト後処理完了")  # loguru logger を使用 # 修正
         return processed_headings_and_text
 
 
@@ -596,7 +630,7 @@ class Scraper:
         Returns:
             list: 不要なキーワード削除後の見出しと本文テキストのペアを格納したリスト
         """
-        logger.debug("不要ワード削除開始") #  debugログ追加
+        logger.debug("不要ワード削除開始")  # loguru logger を使用 # 修正
         exclude_words = Scraper.exclude_words # クラス変数として定義
         processed_headings_and_text = []
         for section in headings_and_text:
@@ -614,7 +648,7 @@ class Scraper:
                 "text_content": text_content, #  キーを "text_content" に修正
                 "sub_sections": self._remove_exclude_words(section["sub_sections"]) if section.get("sub_sections") else [] #  sub_sectionsに対しても再帰的に不要ワード削除
             })
-        logger.debug("不要ワード削除完了") #  debugログ追加
+        logger.debug("不要ワード削除完了")  # loguru logger を使用 # 修正
         return processed_headings_and_text
 
 
