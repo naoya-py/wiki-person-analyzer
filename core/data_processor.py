@@ -7,6 +7,7 @@ from config import Config
 from core.data_normalizer import DataNormalizer
 from core.name_extractor import NameExtractor
 from core.data_saver import DataSaver
+from core.date_extractor import DateExtractor
 from core.data_extractor import DataExtractor
 
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
@@ -35,30 +36,29 @@ class DataProcessor:
                 logger.debug(f"Processed item: {processed_item}")
 
                 # テキストを取得して両親の情報を抽出
-                full_text = scraper.extract_text()
-                if full_text and isinstance(full_text, str):
-                    parents_info = DataExtractor.extract_parents_info(full_text)
-                    logger.debug(f"Extracted parents info: {parents_info}")
+                sections = scraper.extract_text()
+                for section in sections:
+                    if "生涯" in section.get("category_texts", []) and section.get("heading_text") == "生い立ち":
+                        text = section.get("text", "")
+                        if text:
+                            parents_info = DataExtractor.extract_parents_info(text)
+                            logger.debug(f"Extracted parents info: {parents_info}")
 
-                    # 家族構成に両親の情報を追加
-                    if '家族構成' not in processed_item:
-                        processed_item['家族構成'] = []
+                            # 家族構成に両親の情報を追加
+                            if '家族構成' not in processed_item:
+                                processed_item['家族構成'] = []
 
-                    if parents_info['父']:
-                        processed_item['家族構成'].append({
-                            '関係': '父',
-                            '氏名': parents_info['父'],
-                            '生年月日': None,
-                            '死亡年月日': None
-                        })
+                            if parents_info['父']:
+                                processed_item['家族構成'].append({
+                                    '関係': '父',
+                                    '氏名': parents_info['父']
+                                })
 
-                    if parents_info['母']:
-                        processed_item['家族構成'].append({
-                            '関係': '母',
-                            '氏名': parents_info['母'],
-                            '生年月日': None,
-                            '死亡年月日': None
-                        })
+                            if parents_info['母']:
+                                processed_item['家族構成'].append({
+                                    '関係': '母',
+                                    '氏名': parents_info['母']
+                                })
 
                 self.data.append(processed_item)
                 self.logger.info(f"Processed data for {page_title}")
@@ -86,12 +86,12 @@ class DataProcessor:
             if key == "氏名":
                 value = NameExtractor.extract_japanese_name(value)
             elif key == "生年月日":
-                birth_date_info = DataExtractor.extract_and_format_birth_date(value)
+                birth_date_info = DateExtractor.extract_and_format_birth_date(value)
                 logger.debug(f"Extracted birth date info: {birth_date_info}")
                 processed_item.update(birth_date_info)
                 value = birth_date_info["生年月日"]["全体"]
             elif key == "没年月日":
-                death_date_info = DataExtractor.extract_and_format_death_date(value)
+                death_date_info = DateExtractor.extract_and_format_death_date(value)
                 logger.debug(f"Extracted death date info: {death_date_info}")
                 processed_item.update(death_date_info)
                 value = death_date_info["没年月日"]["全体"]
@@ -130,7 +130,7 @@ class DataProcessor:
         if "生年月日" in birth_date_info and "没年月日" in death_date_info:
             birth_date = birth_date_info["生年月日"]["全体"]
             death_date = death_date_info["没年月日"]["全体"]
-            processed_item["死亡年齢"] = DataExtractor.calculate_age_at_death(birth_date, death_date)
+            processed_item["死亡年齢"] = DateExtractor.calculate_age_at_death(birth_date, death_date)
             logger.debug(f"Calculated age at death: {processed_item['死亡年齢']}")
 
         # Ensure detailed date information is included in the final processed item
