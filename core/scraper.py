@@ -927,25 +927,31 @@ class Scraper:
 
 # ----------------------- メイン処理 (Example Usage) -----------------------
 if __name__ == "__main__":
-    page_title = "アルベルト・アインシュタイン"
-    scraper = Scraper(page_title=page_title)
+    page_titles = [
+        "アルベルト・アインシュタイン",
+        "マリ・キュリー",
+        "スティーブ・ジョブズ"
+    ]
 
-    try:
-        scraper.fetch_page_data()
+    for page_title in page_titles:
+        scraper = Scraper(page_title=page_title)
 
-        scraper.save_infobox_data()
-        scraper.save_text_data()
+        try:
+            scraper.fetch_page_data()
 
-        image_data = scraper.extract_image_data()
-        print("Image Data:")
-        print(f"取得した画像数: {len(image_data)}")
-        print(json.dumps(image_data, indent=2, ensure_ascii=False))
-        print("\n" + "=" * 50 + "\n")
+            scraper.save_infobox_data()
+            scraper.save_text_data()
 
-        categories = scraper.extract_categories()
-        print("Categories:")
-        print(json.dumps(categories, indent=2, ensure_ascii=False))
-        print("\n" + "=" * 50 + "\n")
+            image_data = scraper.extract_image_data()
+            print("Image Data:")
+            print(f"取得した画像数: {len(image_data)}")
+            print(json.dumps(image_data, indent=2, ensure_ascii=False))
+            print("\n" + "=" * 50 + "\n")
 
-    except ValueError as e:
-        print(f"スクレイピング中にエラーが発生しました: {e}")
+            categories = scraper.extract_categories()
+            print("Categories:")
+            print(json.dumps(categories, indent=2, ensure_ascii=False))
+            print("\n" + "=" * 50 + "\n")
+
+        except ValueError as e:
+            print(f"スクレイピング中にエラーが発生しました: {e}")

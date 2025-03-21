@@ -7,7 +7,7 @@ from config import Config
 from core.data_normalizer import DataNormalizer
 from core.name_extractor import NameExtractor
 from core.data_saver import DataSaver
-from core.date_extractor import DateExtractor
+from core.data_extractor import DateExtractor
 
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
 logger = get_logger(__name__)
@@ -50,7 +50,7 @@ class DataProcessor:
 
         for key in Config.GENERAL_KEYS:
             mapped_keys = Config.key_map.get(key, [key])
-            value = "不明"
+            value = None
             for mapped_key in mapped_keys:
                 if mapped_key in item:
                     value = item[mapped_key]
@@ -68,11 +68,29 @@ class DataProcessor:
                 logger.debug(f"Extracted death date info: {death_date_info}")
                 processed_item.update(death_date_info)
                 value = death_date_info["没年月日"]["全体"]
-            elif key == "出生地":
+            elif key == "出身地":
                 logger.debug(f"生誕情報: {value}")
                 birth_place_info = DataNormalizer.extract_country_from_birth_info(value)
-                processed_item.update(birth_place_info)
-                logger.debug(f"出生地: {birth_place_info}")
+                logger.debug(f"出身地: {birth_place_info}")
+                # 出身地情報を辞書としてまとめる
+                processed_item["出身地"] = {
+                    "出身地_国": birth_place_info["出身地_国"],
+                    "出身地_州/王国": birth_place_info["出身地_州/王国"],
+                    "出身地_都市": birth_place_info["出身地_都市"]
+                }
+                continue  # '出身地' キー自体を追加しないようにする
+            elif key == "配偶者":
+                logger.debug(f"配偶者情報: {value}")
+                spouse_info = DataNormalizer.normalize_spouse_info(value)
+                processed_item["配偶者"] = spouse_info
+                logger.debug(f"整形された配偶者情報: {spouse_info}")
+                continue  # '配偶者' キー自体を追加しないようにする
+            elif key == "子供":
+                logger.debug(f"子供情報: {value}")
+                children_info = DataNormalizer.normalize_children_info(value)
+                processed_item["子供"] = children_info
+                logger.debug(f"整形された子供情報: {children_info}")
+                continue  # '子供' キー自体を追加しないようにする
             elif key == "国籍":
                 logger.debug(f"国籍情報: {value}")
                 nationality_info = DataNormalizer.normalize_nationality_info(value)

@@ -1,8 +1,10 @@
 import re
 import dateparser
+from typing import Optional, List, Dict, Any
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
 
 class DataNormalizer:
     """
@@ -10,12 +12,12 @@ class DataNormalizer:
     """
 
     @staticmethod
-    def normalize_date(date_str: str) -> str:
+    def normalize_date(date_str: str) -> Optional[str]:
         """
         日付を標準形式 (YYYY-MM-DD) に変換する。
         """
         if not date_str or date_str == "不明":
-            return "不明"
+            return None
 
         # 和暦から西暦への変換
         date_str = DataNormalizer.convert_japanese_era_to_gregorian(date_str)
@@ -25,7 +27,7 @@ class DataNormalizer:
         if parsed_date:
             return parsed_date.strftime("%Y-%m-%d")
 
-        return "不明"
+        return None
 
     @staticmethod
     def convert_japanese_era_to_gregorian(date_str: str) -> str:
@@ -75,14 +77,14 @@ class DataNormalizer:
         return field_mapping.get(field_str, field_str)
 
     @staticmethod
-    def handle_missing_value(value: str) -> str:
+    def handle_missing_value(value: Optional[str]) -> Optional[str]:
         """
-        欠損値を「不明」に統一する。
+        欠損値を`null`に統一する。
         """
-        return value if value else "不明"
+        return value if value else None
 
     @staticmethod
-    def extract_country_from_birth_info(birth_info: str) -> dict:
+    def extract_country_from_birth_info(birth_info: str) -> Dict[str, Optional[str]]:
         """
         生誕情報から国名、州/王国、都市名を抽出するメソッド。
         """
@@ -98,10 +100,10 @@ class DataNormalizer:
         country_pattern = re.compile(r"(" + "|".join(known_countries) + r")")
 
         country_match = country_pattern.search(birth_info)
-        result = {
-            "出生地_国": "不明",
-            "出生地_州/王国": "不明",
-            "出生地_都市": "不明"
+        result: Dict[str, Optional[str]] = {
+            "出身地_国": None,
+            "出身地_州/王国": None,
+            "出身地_都市": None
         }
 
         if country_match:
@@ -120,18 +122,18 @@ class DataNormalizer:
             state_city_match = state_city_pattern.search(remaining_info)
 
             if state_city_match:
-                state_or_kingdom = state_city_match.group(1) if state_city_match.group(1) else "不明"
+                state_or_kingdom = state_city_match.group(1) if state_city_match.group(1) else None
                 city = state_city_match.group(2)
 
-                result["出生地_国"] = country
-                result["出生地_州/王国"] = state_or_kingdom
-                result["出生地_都市"] = city
+                result["出身地_国"] = country
+                result["出身地_州/王国"] = state_or_kingdom
+                result["出身地_都市"] = city
 
         logger.debug(f"抽出された国名、州/王国、および都市名: {result}")
         return result
 
     @staticmethod
-    def normalize_nationality_info(nationality_info: str) -> list:
+    def normalize_nationality_info(nationality_info: str) -> List[Dict[str, Any]]:
         """
         国籍情報を期間ごとに分割し、適切な形式に整えるメソッド。
         """
@@ -144,7 +146,7 @@ class DataNormalizer:
         matches_with_period = pattern_with_period.findall(nationality_info)
         matches_without_period = pattern_without_period.findall(nationality_info)
 
-        normalized_nationality = []
+        normalized_nationality: List[Dict[str, Any]] = []
 
         for match in matches_with_period:
             countries, start_year, end_year = match
@@ -167,6 +169,57 @@ class DataNormalizer:
         logger.debug(f"整形された国籍情報: {normalized_nationality}")
         return normalized_nationality
 
+    @staticmethod
+    def normalize_spouse_info(spouse_info: str) -> List[Dict[str, Optional[Any]]]:
+        """
+        配偶者情報を分割し、名前と期間を抽出するメソッド。
+        """
+        logger.debug(f"配偶者情報: {spouse_info}")
+
+        spouse_entries = re.split(r'\s+(?=\D)', spouse_info)
+        normalized_spouses: List[Dict[str, Optional[Any]]] = []
+
+        for entry in spouse_entries:
+            spouse_name = re.search(r'^[^\d\s]+', entry)
+            marriage_dates = re.findall(r'\d{4}', entry)
+
+            spouse_dict = {
+                '配偶者名': spouse_name.group(0) if spouse_name else None,
+                '結婚年': int(marriage_dates[0]) if marriage_dates else None,
+                '離婚年': int(marriage_dates[1]) if len(marriage_dates) > 1 else None
+            }
+            normalized_spouses.append(spouse_dict)
+
+        logger.debug(f"整形された配偶者情報: {normalized_spouses}")
+        return normalized_spouses
+
+    @staticmethod
+    def normalize_children_info(children_info: str) -> List[Dict[str, Optional[Any]]]:
+        """
+        子供情報を分割し、名前と年号を抽出するメソッド。
+        """
+        logger.debug(f"子供情報: {children_info}")
+
+        children_entries = re.split(r'\s+(?=\D)', children_info)
+        normalized_children: List[Dict[str, Optional[Any]]] = []
+
+        for entry in children_entries:
+            child_name = re.search(r'^[^\d\s]+', entry)
+            birth_death_years = re.findall(r'\d{4}', entry)
+            death_year_uncertain = '?' in entry
+
+            child_dict = {
+                '子供名': child_name.group(0) if child_name else None,
+                '出生年': int(birth_death_years[0]) if birth_death_years else None,
+                '死亡年': int(birth_death_years[1]) if len(birth_death_years) > 1 else None,
+                '死亡年不確か': death_year_uncertain
+            }
+            normalized_children.append(child_dict)
+
+        logger.debug(f"整形された子供情報: {normalized_children}")
+        return normalized_children
+
+
 # テストコード
 if __name__ == "__main__":
     test_cases = [
@@ -176,4 +229,20 @@ if __name__ == "__main__":
     ]
     for birth_info in test_cases:
         result = DataNormalizer.extract_country_from_birth_info(birth_info)
+        print(result)
+
+    spouse_test_cases = [
+        "ミレヴァ・マリッチ 1903-1919 エルザ・レーベンタール 1919-1936",
+        "ピエール・キュリー 1895年結婚"
+    ]
+    for spouse_info in spouse_test_cases:
+        result = DataNormalizer.normalize_spouse_info(spouse_info)
+        print(result)
+
+    children_test_cases = [
+        "リーゼル 1902-1903? ハンス・アルベルト 1904-1973 エドゥアルト 1910-1965",
+        "イレーヌ・ジョリオキュリー エーヴ・キュリー"
+    ]
+    for children_info in children_test_cases:
+        result = DataNormalizer.normalize_children_info(children_info)
         print(result)

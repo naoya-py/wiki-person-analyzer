@@ -2,6 +2,7 @@ import re
 from datetime import datetime
 from core.data_normalizer import DataNormalizer
 from utils.logger import get_logger
+from typing import Dict, Optional
 
 logger = get_logger(__name__)
 
