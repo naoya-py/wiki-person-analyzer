@@ -9,6 +9,8 @@ import requests_cache
 from config import Config
 from utils.logger import configure_logging, get_logger
 from typing import Any, List, Dict, Union, Optional
+from utils.full_width_converter import FullWidthConverter
+from core.data_saver import DataSaver
 
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
 logger = get_logger(__name__)
@@ -256,8 +258,9 @@ class Scraper:
         text = re.sub(r"\s+", " ", text)
         text = text.strip()
         text = re.sub(Config.FULL_WIDTH_SPACE, " ", text)
-        pattern = r"[^\w\s\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff*-]"
+        pattern = r"[^\w\s\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff.,?!-]"
         text = re.sub(pattern, "", text)
+        text = FullWidthConverter.convert_to_fullwidth(text)  # 全角に統一
 
         logger.debug(f"_extract_text_from_cell メソッド完了: 処理後のテキスト: {text}")
         return text
@@ -397,11 +400,21 @@ class Scraper:
             soup (BeautifulSoup): BeautifulSoup オブジェクト。
         """
         logger.debug("不要要素削除開始")
+
+        # 指定されたタグを削除
         for tag_name in Config.UNNECESSARY_TAGS:
             for tag in soup.find_all(tag_name):
                 tag.decompose()
+
+        # コメントを削除
         for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
             comment.extract()
+
+        # 無視するクラスを持つ要素を削除
+        for class_name in Config.IGNORE_CLASSES:
+            for tag in soup.find_all(class_=class_name):
+                tag.decompose()
+
         logger.debug("不要要素削除完了")
 
     def _extract_headings_and_body(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
@@ -443,7 +456,8 @@ class Scraper:
                 section_data_h3 = self._extract_section_content_with_category(next_sibling, current_category_path)
                 if section_data_h3:
                     sections.append(section_data_h3)
-                    h4_sections = self._extract_h4_sections(next_sibling, current_category_path + [next_sibling.get_text(strip=True)])
+                    h4_sections = self._extract_h4_sections(next_sibling,
+                                                            current_category_path + [next_sibling.get_text(strip=True)])
                     if h4_sections:
                         sections.extend(h4_sections)
             next_sibling = next_sibling.find_next_sibling()
@@ -597,6 +611,7 @@ class Scraper:
         text = self._normalize_text(text)
         text = self._remove_unnecessary_chars(text)
         text = self._normalize_spacing(text)
+        text = FullWidthConverter.convert_to_fullwidth(text)  # 全角に統一
         return text
 
     def _process_sibling_element_with_category(self, sibling: BeautifulSoup, sibling_processors: Dict[str, Any],
@@ -751,7 +766,7 @@ class Scraper:
         logger.debug("不要セクション削除完了")
         return processed_sections
 
-        # ----------------------- テキストの後処理 -----------------------
+    # ----------------------- テキストの後処理 -----------------------
 
     def _post_process_text_for_category(self, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -793,6 +808,9 @@ class Scraper:
         heading_text = self._normalize_spacing(heading_text)
         text_content = self._normalize_spacing(text_content)
 
+        heading_text = FullWidthConverter.convert_to_fullwidth(heading_text)  # 全角に統一
+        text_content = FullWidthConverter.convert_to_fullwidth(text_content)  # 全角に統一
+
         return {
             "category_texts": section["category_texts"],
             "heading_level": section["heading_level"],
@@ -824,23 +842,16 @@ class Scraper:
         """
         text = re.sub(r"\[編集\]", "", text)
         text = re.sub(r"\[\d+\]|\[要出典\]", "", text)
+        pattern = r"[!\"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~！”＃＄％＆’（）＊＋，－．／：；＜＝＞？＠「￥」＾＿‘｜’｛｝～©®…—–]"
+        text = re.sub(pattern, "", text)
         return text
 
     def _normalize_spacing(self, text: str) -> str:
-        """
-        テキストの空白を正規化する (全角スペースを半角に、連続空白を削除)。
-
-        Args:
-            text (str): 空白正規化対象のテキスト。
-
-        Returns:
-            str: 空白が正規化されたテキスト。
-        """
         text = re.sub(Config.FULL_WIDTH_SPACE, " ", text).strip()
-        text = " ".join(text.split())
+        text = re.sub(r'\s+', ' ', text)  # 連続する空白文字（タブ、改行含む）を一つの半角スペースに置換
         return text
 
-    # ----------------------- 不要ワードの削除 -----------------------
+        # ----------------------- 不要ワードの削除 -----------------------
 
     def _remove_exclude_words_for_category(self, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -898,6 +909,22 @@ class Scraper:
         text = re.sub(combined_pattern, "", text)
         return text
 
+    # ----------------------- JSON保存 -----------------------
+
+    def save_infobox_data(self):
+        """
+        Infobox データを保存するメソッド。
+        """
+        infobox_data = self.extract_infobox_data()
+        DataSaver.save_data(infobox_data, "s_infobox")
+
+    def save_text_data(self):
+        """
+        テキストデータを保存するメソッド。
+        """
+        text_data = self.extract_text()
+        DataSaver.save_data(text_data, "text")
+
 # ----------------------- メイン処理 (Example Usage) -----------------------
 if __name__ == "__main__":
     page_title = "アルベルト・アインシュタイン"
@@ -906,10 +933,8 @@ if __name__ == "__main__":
     try:
         scraper.fetch_page_data()
 
-        infobox_data = scraper.extract_infobox_data()
-        print("Infobox Data:")
-        print(json.dumps(infobox_data, indent=2, ensure_ascii=False))
-        print("\n" + "=" * 50 + "\n")
+        scraper.save_infobox_data()
+        scraper.save_text_data()
 
         image_data = scraper.extract_image_data()
         print("Image Data:")
@@ -921,12 +946,6 @@ if __name__ == "__main__":
         print("Categories:")
         print(json.dumps(categories, indent=2, ensure_ascii=False))
         print("\n" + "=" * 50 + "\n")
-
-        text_data = scraper.extract_text()
-        sections = text_data.get("sections", [])
-        print("Text Data:")
-        print(f"取得したセクション数: {len(sections)}")
-        print(json.dumps(text_data, indent=2, ensure_ascii=False))
 
     except ValueError as e:
         print(f"スクレイピング中にエラーが発生しました: {e}")

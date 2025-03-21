@@ -30,151 +30,58 @@ class Config:
         "関連項目",
     ]
 
-    regex_patterns = {
-        "timeline_year_month_day": [
-            "(\\d{4})年(\\d{1,2})月(\\d{1,2})日?(?:[\\s、]{1,2})?(.+?)(?=(?:\\d{4}年|$))",
-            "(\\d{4})/(\\d{1,2})/(\\d{1,2})(?:[\\s、]{1,2})?(.+?)(?=(?:\\d{4}年|$))",
-            "(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[\\s、]{1,2})?(.+?)(?=(?:\\d{4}年|$))"
-        ],
-        "timeline_year_only": [
-            "(\\d{4})年(?:[\\s、]{1,2})?(.+?)(?=(?:\\d{4}年|$))"
-        ],
-        "rule_based_ner": [
-            "([一-龯]{1,})\\s([一-龯]{1,})",
-            "([一-龯]{1,})先生",
-            "([一-龯]{1,})氏",
-            "([A-Z][a-z]+)\\s([A-Z][a-z]+)"
-        ],
-        "name": [
-            r"(.[ァ-ヶー・]+)"
-        ],
-        "real_name": [
-            r"[A-Za-z\s]+"
-        ],
-        "birth_date": [
-            r"(\d{4})年\s*(\d{1,2})月(\d{1,2})日|(\d{4})-(\d{1,2})-(\d{1,2})"
-        ],
-        "death_date": [
-            r"(\d{4})年\s*(\d{1,2})月(\d{1,2})日|(\d{4})-(\d{1,2})-(\d{1,2})"
-        ],
-        "residence": [
-            r"(.+)"
-        ],
-        "birth_place": [
-            r"(.+?)、\s*(.+)",
-            r"(.+?)\s*,\s*(.+)"
-        ],
-        "death_place": [
-            r"(.+?)、\s*(.+)",
-            r"(.+?)\s*,\s*(.+)"
-        ],
-        "alma_mater": [
-            r"(.+?)\((.+?)\)"
-        ],
-        "spouse": [
-            r"(.+?)(\d{4}-\d{4}|\d{4}-\d{2,4}|\d{4}-\d{1,2}|\d{4}-\d{1}|\d{4}-|\d{4,4})",
-            r"(.+)"
-        ],
-        "children": [
-            r"(.+?)(\d{4}-\d{4}|\d{4}-\d{2,4}|\d{4}-\d{1,2}|\d{4}-\d{1}|\d{4}-|\d{4,4})",
-            r"(.+)"
-        ],
-        "nationality": [
-            r"(.+?)\s+(\d{4}-\d{4}|\d{4}-\d{2,4}|\d{4}-\d{1,2}|\d{4}-\d{1}|\d{4}-|\d{4,4})",
-            r"(.+)"
-        ],
-        "affiliation": [
-            r"(.+?)\s+(\d{4}-\d{4}|\d{4}-\d{2,4}|\d{4}-\d{1,2}|\d{4}-\d{1}|\d{4}-|\d{4,4})",
-            r"(.+)"
-        ],
-        "occupation": [
-            r"(.+)"
-        ],
-
-    }
-
     exclude_words_timeline = [
         "参考文献",
     ]
 
+    # 汎用的なキーのリスト
+    GENERAL_KEYS = [
+        "氏名",
+        "生年月日",
+        "没年月日",
+        "出生地",
+        "国籍",
+        "民族",
+        "最終学歴",
+        "職歴",
+        "所属",
+        "配偶者",
+        "子供",
+        "親",
+        "分野",
+        "主な業績",
+        "受賞歴",
+        "活動期間",
+        "称号",
+        "宗教",
+        "思想"
+    ]
+
+    # キーのマッピング
     key_map = {
-        "名前": "name",
-        "本名": "real_name",
-        "別名": "alias",
-        "生誕": "birth_date",
-        "誕生日": "birth_date",
-        "生年月日": "birth_date",
-        "死没": "death_date",
-        "死亡日": "death_date",
-        "没年月日": "death_date",
-        "出生地": "birth_place",
-        "出身地": "birth_place",
-        "生地": "birth_place",
-        "死没地": "death_place",
-        "死亡地": "death_place",
-        "没地": "death_place",
-        "国": "country",
-        "国籍": "nationality",
-        "居住": "residence",
-        "活動拠点": "active_base",
-        "居住地": "residence",
-
-        "出身校": "alma_mater",
-        "学歴": "education",
-        "学位": "degree",
-        "研究分野": "field",
-        "研究機関": "institutions",
-        "指導教員": "advisor",
-        "博士課程指導教員": "doctoral_advisor",
-        "他の指導教員": "other_advisors",
-        "卒業": "graduated",
-        "最終学歴": "final_education",
-        "卒業年": "graduated_year",
-        "修了年": "graduated_year",
-        "修了": "graduated",
-
-        "主な業績": "notable_works",
-        "博士論文": "doctoral_dissertation",
-        "代表作": "notable_works",
-        "主な受賞歴": "awards",
-        "受賞歴": "awards",
-        "受賞": "awards",
-        "表彰": "awards",
-        "称号": "honorific_title",
-
-        "配偶者": "spouse",
-        "夫": "spouse",
-        "妻": "spouse",
-        "子供": "children",
-        "子女": "children",
-        "親": "parents",
-        "影響を与えた人物": "influenced",
-        "影響を受けた人物": "influenced_by",
-        "師": "mentor",
-        "弟子": "disciple",
-
-        "署名": "signature",
-        "ウェブサイト": "website",
-        "公式サイト": "website",
-        "活動": "active_periods",
-        "活動期間": "active_periods",
-        "肩書": "position",
-        "役職": "position",
-        "民族": "ethnicity",
-        "宗教": "religion",
-        "分野": "occupation",
-        "職業": "occupation",
-        "所属": "affiliation",
-        "専門": "expertise",
-
-        "作品": "works",
-        "映画": "films",
-        "出演": "appeared",
-        "脚注": "footnote"
+        "氏名": ["name", "名前"],
+        "生年月日": ["生誕", "誕生日", "生年月日"],
+        "没年月日": ["死没", "死亡日", "没年月日"],
+        "出生地": ["birth_place", "出身地", "生誕"],
+        "国籍": ["nationality", "国", "国籍"],
+        "民族": ["ethnicity"],
+        "最終学歴": ["education", "学歴", "出身校"],
+        "職歴": ["occupation", "職業"],
+        "所属": ["affiliation"],
+        "配偶者": ["spouse", "夫", "妻"],
+        "子供": ["children", "子女"],
+        "親": ["parents"],
+        "分野": ["field", "研究分野", "専門"],
+        "主な業績": ["notable_works", "代表作"],
+        "受賞歴": ["awards", "受賞", "表彰", "主な受賞歴"],
+        "活動期間": ["active_periods", "活動期間"],
+        "称号": ["honorific_title", "肩書", "役職"],
+        "宗教": ["religion"],
+        "思想": ["ideology"]
     }
 
     key_type = {
-        "birth_date": ["birth_year", "birth_month", "birth_day"],  # 誕生日 (年、月、日)
+        "生年月日": ["年", "月", "日"],  # 誕生日 (年、月、日)
         "death_date": ["death_year", "death_month", "death_day", "death_age"],  # 死亡日 (年、月、日、享年)
         "birth_place": ["birth_country", "birth_kingdom", "birth_city"],  # 出生地 (国、旧国名、都市)
         "death_place": ["death_country", "death_state", "death_city"],  # 死亡地 (国、州/県、都市)
@@ -211,6 +118,10 @@ class Config:
         "noscript",
         "form",
         "input",
+    ]
+
+    IGNORE_CLASSES = [
+        'toccolours',
     ]
 
     BASE_URL = "https://ja.wikipedia.org/w/api.php"
