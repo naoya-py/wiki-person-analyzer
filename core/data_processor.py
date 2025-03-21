@@ -70,15 +70,21 @@ class DataProcessor:
                 value = death_date_info["没年月日"]["全体"]
             elif key == "出生地":
                 logger.debug(f"生誕情報: {value}")
-                birth_place = DataNormalizer.extract_country_from_birth_info(value)
-                processed_item["出生地"] = birth_place
-                logger.debug(f"出生地: {birth_place}")
-                value = birth_place
+                birth_place_info = DataNormalizer.extract_country_from_birth_info(value)
+                processed_item.update(birth_place_info)
+                logger.debug(f"出生地: {birth_place_info}")
             elif key == "国籍":
                 logger.debug(f"国籍情報: {value}")
                 nationality_info = DataNormalizer.normalize_nationality_info(value)
                 processed_item["国籍"] = nationality_info
                 logger.debug(f"整形された国籍情報: {nationality_info}")
+                value = nationality_info
+            elif key in ["出生地", "出身地"]:
+                value = DataNormalizer.standardize_location(value)
+            elif key == "分野":
+                value = DataNormalizer.standardize_field(value)
+            else:
+                value = DataNormalizer.handle_missing_value(value)
             processed_item[key] = value
 
         # Calculate age at death

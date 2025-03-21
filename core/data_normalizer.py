@@ -82,26 +82,54 @@ class DataNormalizer:
         return value if value else "不明"
 
     @staticmethod
-    def extract_country_from_birth_info(birth_info: str) -> str:
+    def extract_country_from_birth_info(birth_info: str) -> dict:
         """
-        生誕情報から国名を抽出するメソッド。
+        生誕情報から国名、州/王国、都市名を抽出するメソッド。
         """
         logger.debug(f"生誕情報: {birth_info}")
 
-        # 国名リスト（必要に応じて追加）
-        country_list = [
-            "ドイツ帝国", "フランス共和国", "アメリカ合衆国", "日本", "イギリス", "カナダ", "中国",
-            "ロシア", "インド", "ブラジル", "オーストラリア", "イタリア", "スペイン", "韓国",
-            "ポーランド立憲王国", "ヴュルテンベルク王国"
+        # 国名のリスト（必要に応じて追加）
+        known_countries = [
+            "アメリカ合衆国", "ドイツ帝国", "ポーランド立憲王国", "フランス共和国", "日本", "イギリス", "カナダ",
+            "中国",
+            "ロシア", "インド", "ブラジル", "オーストラリア", "イタリア", "スペイン", "韓国"
         ]
 
-        for country in country_list:
-            if country in birth_info:
-                logger.debug(f"抽出された国名: {country}")
-                return country
+        # 国名を抽出する正規表現パターン
+        country_pattern = re.compile(r"(" + "|".join(known_countries) + r")")
 
-        logger.debug("国名が見つかりませんでした。")
-        return "不明"
+        country_match = country_pattern.search(birth_info)
+        result = {
+            "出生地_国": "不明",
+            "出生地_州/王国": "不明",
+            "出生地_都市": "不明"
+        }
+
+        if country_match:
+            country = country_match.group(0)
+            remaining_info = birth_info[country_match.end():].strip()
+
+            # 不要な記号を削除
+            remaining_info = re.sub(r"^[・、]", "", remaining_info)
+
+            # 州/王国と都市を抽出するための正規表現パターン
+            if "アメリカ合衆国" in country:
+                state_city_pattern = re.compile(r"([^\d\s]+州)\s*([^\d\s]+)$")
+            else:
+                state_city_pattern = re.compile(r"([^\d\s]+王国)?\s*([^\d\s]+)$")
+
+            state_city_match = state_city_pattern.search(remaining_info)
+
+            if state_city_match:
+                state_or_kingdom = state_city_match.group(1) if state_city_match.group(1) else "不明"
+                city = state_city_match.group(2)
+
+                result["出生地_国"] = country
+                result["出生地_州/王国"] = state_or_kingdom
+                result["出生地_都市"] = city
+
+        logger.debug(f"抽出された国名、州/王国、および都市名: {result}")
+        return result
 
     @staticmethod
     def normalize_nationality_info(nationality_info: str) -> list:
@@ -139,3 +167,14 @@ class DataNormalizer:
 
         logger.debug(f"整形された国籍情報: {normalized_nationality}")
         return normalized_nationality
+
+# テストコード
+if __name__ == "__main__":
+    test_cases = [
+        "アメリカ合衆国カリフォルニア州パロアルト",
+        "ポーランド立憲王国・ワルシャワ",
+        "ドイツ帝国ヴュルテンベルク王国ウルム"
+    ]
+    for birth_info in test_cases:
+        result = DataNormalizer.extract_country_from_birth_info(birth_info)
+        print(result)
