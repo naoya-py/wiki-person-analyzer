@@ -12,7 +12,6 @@ from core.data_extractor import DataExtractor
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
 logger = get_logger(__name__)
 
-
 class DataProcessor:
     """
     偉人情報のデータセットを作成するクラス。
@@ -35,30 +34,31 @@ class DataProcessor:
                 processed_item = self._extract_and_format_data(infobox_data)
                 logger.debug(f"Processed item: {processed_item}")
 
-                # テキストから両親の情報を抽出
+                # テキストを取得して両親の情報を抽出
                 full_text = scraper.extract_text()
-                parents_info = DataExtractor.extract_parents_info(full_text)
-                logger.debug(f"Extracted parents info: {parents_info}")
+                if full_text and isinstance(full_text, str):
+                    parents_info = DataExtractor.extract_parents_info(full_text)
+                    logger.debug(f"Extracted parents info: {parents_info}")
 
-                # 家族構成に両親の情報を追加
-                if '家族構成' not in processed_item:
-                    processed_item['家族構成'] = []
+                    # 家族構成に両親の情報を追加
+                    if '家族構成' not in processed_item:
+                        processed_item['家族構成'] = []
 
-                if parents_info['父']:
-                    processed_item['家族構成'].append({
-                        '関係': '父',
-                        '氏名': parents_info['父'],
-                        '生年月日': None,
-                        '死亡年月日': None
-                    })
+                    if parents_info['父']:
+                        processed_item['家族構成'].append({
+                            '関係': '父',
+                            '氏名': parents_info['父'],
+                            '生年月日': None,
+                            '死亡年月日': None
+                        })
 
-                if parents_info['母']:
-                    processed_item['家族構成'].append({
-                        '関係': '母',
-                        '氏名': parents_info['母'],
-                        '生年月日': None,
-                        '死亡年月日': None
-                    })
+                    if parents_info['母']:
+                        processed_item['家族構成'].append({
+                            '関係': '母',
+                            '氏名': parents_info['母'],
+                            '生年月日': None,
+                            '死亡年月日': None
+                        })
 
                 self.data.append(processed_item)
                 self.logger.info(f"Processed data for {page_title}")
@@ -140,7 +140,6 @@ class DataProcessor:
             processed_item.update(death_date_info)
 
         return processed_item
-
 
 # 使用例
 if __name__ == "__main__":
