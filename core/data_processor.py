@@ -79,12 +79,6 @@ class DataProcessor:
                 nationality_info = DataNormalizer.normalize_nationality_info(value)
                 processed_item["国籍"] = nationality_info
                 logger.debug(f"整形された国籍情報: {nationality_info}")
-            elif key in ["出生地", "出身地"]:
-                value = DataNormalizer.standardize_location(value)
-            elif key == "分野":
-                value = DataNormalizer.standardize_field(value)
-            else:
-                value = DataNormalizer.handle_missing_value(value)
             processed_item[key] = value
 
         # Calculate age at death
