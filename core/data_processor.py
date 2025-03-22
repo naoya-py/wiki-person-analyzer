@@ -36,29 +36,32 @@ class DataProcessor:
                 logger.debug(f"Processed item: {processed_item}")
 
                 # テキストを取得して両親の情報を抽出
-                sections = scraper.extract_text()
+                sections_data = scraper.extract_text()
+                sections = sections_data.get("sections", [])
                 for section in sections:
-                    if "生涯" in section.get("category_texts", []) and section.get("heading_text") == "生い立ち":
-                        text = section.get("text", "")
-                        if text:
-                            parents_info = DataExtractor.extract_parents_info(text)
-                            logger.debug(f"Extracted parents info: {parents_info}")
+                    if isinstance(section, dict):
+                        # "category_texts"に"生涯"を含むものと、"heading_text"が"生い立ち"または"幼少時"のものを選択
+                        if "生涯" in section.get("category_texts", []) and section.get("heading_text") in ["生い立ち", "幼少時"]:
+                            text = section.get("text", "")
+                            if text:
+                                parents_info = DataExtractor.extract_parents_info(text)
+                                logger.debug(f"Extracted parents info: {parents_info}")
 
-                            # 家族構成に両親の情報を追加
-                            if '家族構成' not in processed_item:
-                                processed_item['家族構成'] = []
+                                # 家族構成に両親の情報を追加
+                                if '家族構成' not in processed_item or processed_item['家族構成'] is None:
+                                    processed_item['家族構成'] = []
 
-                            if parents_info['父']:
-                                processed_item['家族構成'].append({
-                                    '関係': '父',
-                                    '氏名': parents_info['父']
-                                })
+                                if parents_info['父']:
+                                    processed_item['家族構成'].append({
+                                        '関係': '父',
+                                        '氏名': parents_info['父']
+                                    })
 
-                            if parents_info['母']:
-                                processed_item['家族構成'].append({
-                                    '関係': '母',
-                                    '氏名': parents_info['母']
-                                })
+                                if parents_info['母']:
+                                    processed_item['家族構成'].append({
+                                        '関係': '母',
+                                        '氏名': parents_info['母']
+                                    })
 
                 self.data.append(processed_item)
                 self.logger.info(f"Processed data for {page_title}")

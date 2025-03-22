@@ -236,7 +236,7 @@ if __name__ == "__main__":
         "ピエール・キュリー 1895年結婚"
     ]
     for spouse_info in spouse_test_cases:
-        result = DataNormalizer.normalize_spouse_info(spouse_info)
+        result = DataNormalizer.normalize_spouse_info(spouse_info)  # type: ignore
         print(result)
 
     children_test_cases = [
@@ -244,5 +244,5 @@ if __name__ == "__main__":
         "イレーヌ・ジョリオキュリー エーヴ・キュリー"
     ]
     for children_info in children_test_cases:
-        result = DataNormalizer.normalize_children_info(children_info)
+        result = DataNormalizer.normalize_children_info(children_info)  # type: ignore
         print(result)

@@ -194,7 +194,7 @@ class Scraper:
         logger.info("Infobox データ抽出完了")
         return infobox_data
 
-    def _extract_infobox_header(self, infobox: BeautifulSoup) -> str:
+    def _extract_infobox_header(self, infobox: Tag) -> str:
         """
         Infobox からヘッダー (名前) を抽出する。
 
@@ -210,7 +210,7 @@ class Scraper:
             return header.get_text(strip=True) if header else self.page_title
         return self.page_title
 
-    def _extract_infobox_rows_data(self, infobox: BeautifulSoup) -> Dict[str, str]:
+    def _extract_infobox_rows_data(self, infobox: Tag) -> Dict[str, str]:
         """
         Infobox の行データ (キーと値) を抽出する。
 
@@ -232,7 +232,7 @@ class Scraper:
                     rows_data[key] = value
         return rows_data
 
-    def _extract_text_from_cell(self, cell: BeautifulSoup) -> str:
+    def _extract_text_from_cell(self, cell: Tag) -> str:
         """
         Infobox のセル (td) からテキストを抽出する。
 
@@ -437,7 +437,7 @@ class Scraper:
         logger.debug("フラットなリスト構造での見出しと本文抽出完了 (カテゴリテキスト対応)")
         return sections
 
-    def _extract_h3_sections(self, h2_heading_div: BeautifulSoup) -> List[Dict[str, Any]]:
+    def _extract_h3_sections(self, h2_heading_div: Tag) -> List[Dict[str, Any]]:
         """
         h2 見出しの次の h3 および h4 見出しまでのセクションを抽出する。
 
@@ -464,8 +464,7 @@ class Scraper:
 
         return sections
 
-    def _extract_h4_sections(self, h3_heading_div: BeautifulSoup, current_category_path: List[str]) -> List[
-        Dict[str, Any]]:
+    def _extract_h4_sections(self, h3_heading_div: Tag, current_category_path: List[str]) -> List[Dict[str, Any]]:
         """
         h3 見出しの次の h4 見出しまでのセクションを抽出する。
 
@@ -488,29 +487,16 @@ class Scraper:
 
         return sections
 
-    def _is_h2_heading(self, sibling: BeautifulSoup) -> bool:
-        """
-        sibling が h2 見出しの div 要素であるかを判定する。
-        """
-        return sibling.name == 'div' and 'mw-heading' in sibling.get('class', []) and 'mw-heading2' in sibling.get(
-            'class', [])
+    def _is_h2_heading(self, sibling: Tag) -> bool:
+        return sibling.name == 'div' and 'mw-heading' in sibling.get('class', []) and 'mw-heading2' in sibling.get('class', [])
 
-    def _is_h3_heading(self, sibling: BeautifulSoup) -> bool:
-        """
-        sibling が h3 見出しの div 要素であるかを判定する。
-        """
-        return sibling.name == 'div' and 'mw-heading' in sibling.get('class', []) and 'mw-heading3' in sibling.get(
-            'class', [])
+    def _is_h3_heading(self, sibling: Tag) -> bool:
+        return sibling.name == 'div' and 'mw-heading' in sibling.get('class', []) and 'mw-heading3' in sibling.get('class', [])
 
-    def _is_h4_heading(self, sibling: BeautifulSoup) -> bool:
-        """
-        sibling が h4 見出しの div 要素であるかを判定する。
-        """
-        return sibling.name == 'div' and 'mw-heading' in sibling.get('class', []) and 'mw-heading4' in sibling.get(
-            'class', [])
+    def _is_h4_heading(self, sibling: Tag) -> bool:
+        return sibling.name == 'div' and 'mw-heading' in sibling.get('class', []) and 'mw-heading4' in sibling.get('class', [])
 
-    def _extract_section_content_with_category(self, heading_div_h: BeautifulSoup, category_path: List[str]) -> Dict[
-        str, Any]:
+    def _extract_section_content_with_category(self, heading_div_h: Tag, category_path: List[str]) -> Dict[str, Any]:
         """
         セクション (h2, h3, h4) の内容を抽出する共通メソッド (カテゴリテキスト対応)。
         フラットなリスト構造のセクションデータを作成する。
@@ -550,7 +536,7 @@ class Scraper:
 
         for current_content_sibling in current_content_siblings:
             sub_section_data = self._process_sibling_element_with_category(current_content_sibling, sibling_processors,
-                                                                           cleaned_category_path)
+                                                                            cleaned_category_path)
             if sub_section_data:
                 sections.append(sub_section_data)
             elif self._is_paragraph_element(current_content_sibling):
@@ -614,62 +600,22 @@ class Scraper:
         text = FullWidthConverter.convert_to_fullwidth(text)  # 全角に統一
         return text
 
-    def _process_sibling_element_with_category(self, sibling: BeautifulSoup, sibling_processors: Dict[str, Any],
-                                               category_path: List[str]) -> Optional[Dict[str, Any]]:
-        """
-        sibling 要素の種類を判定し、対応する処理を行う (カテゴリテキスト対応)。
-
-        Args:
-            sibling (BeautifulSoup): sibling 要素。
-            sibling_processors (Dict[str, Any]): sibling 要素の処理関数の辞書。
-            category_path (List[str]): 親セクションまでのカテゴリテキストのリスト。
-
-        Returns:
-            Optional[Dict[str, Any]]: サブセクションデータ (h3, h4) または None。
-        """
+    def _process_sibling_element_with_category(self, sibling: Tag, sibling_processors: Dict[str, Any],
+                                                category_path: List[str]) -> Optional[Dict[str, Any]]:
         for check_func_name, process_func in sibling_processors.items():
             if getattr(self, check_func_name)(sibling):
                 return process_func(sibling, category_path)
         return None
 
-    def _is_paragraph_element(self, sibling: BeautifulSoup) -> bool:
-        """
-        sibling が 本文要素 (p, ul, div, blockquote, table, dl, ol) であるかを判定する。
-
-        Args:
-            sibling (BeautifulSoup): sibling 要素。
-
-        Returns:
-            bool: sibling が本文要素である場合は True、そうでない場合は False。
-        """
+    def _is_paragraph_element(self, sibling: Tag) -> bool:
         return sibling.name in ['p', 'ul', 'div', 'blockquote', 'table', 'dl', 'ol'] or (
-                    sibling.name == 'div' and 'mw-parser-output' in sibling.get('class', []))
+                sibling.name == 'div' and 'mw-parser-output' in sibling.get('class', []))
 
-    def _extract_paragraph_text(self, sibling: BeautifulSoup) -> str:
-        """
-        sibling 要素から本文テキストを抽出する。
-
-        Args:
-            sibling (BeautifulSoup): sibling 要素。
-
-        Returns:
-            str: 抽出された本文テキスト。
-        """
+    def _extract_paragraph_text(self, sibling: Tag) -> str:
         return sibling.get_text(separator=" ", strip=True)
 
-    def _is_next_heading_level(self, sibling: BeautifulSoup, next_heading_levels: List[str],
-                               current_heading_level_class: Optional[str]) -> bool:
-        """
-        sibling が次の見出しレベルの div 要素であるかを判定する。
-
-        Args:
-            sibling (BeautifulSoup): sibling 要素。
-            next_heading_levels (List[str]): 次の見出しレベルのリスト。
-            current_heading_level_class (Optional[str]): 現在の見出しレベルクラス。
-
-        Returns:
-            bool: sibling が次の見出しレベルの div 要素である場合は True、そうでない場合は False。
-        """
+    def _is_next_heading_level(self, sibling: Tag, next_heading_levels: List[str],
+                                current_heading_level_class: Optional[str]) -> bool:
         sibling_heading_level_class = self.get_heading_level_class(sibling)
         if sibling_heading_level_class is None:
             return False
@@ -681,16 +627,7 @@ class Scraper:
 
         return sibling_level_index <= current_level_index
 
-    def get_heading_level_class(self, heading_div: BeautifulSoup) -> Optional[str]:
-        """
-        見出し div 要素から見出しレベルクラス (例: 'mw-heading2') を取得する。
-
-        Args:
-            heading_div (BeautifulSoup): 見出しの div 要素。
-
-        Returns:
-            Optional[str]: 見出しレベルクラス、見出しレベルクラスが見つからない場合は None。
-        """
+    def get_heading_level_class(self, heading_div: Tag) -> Optional[str]:
         for level_class in Config.HEADING_LEVELS:
             if level_class in heading_div.get('class', []):
                 return level_class
