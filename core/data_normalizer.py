@@ -219,6 +219,20 @@ class DataNormalizer:
         logger.debug(f"整形された子供情報: {normalized_children}")
         return normalized_children
 
+    @staticmethod
+    def normalize_field_info(field_info: str) -> List[str]:
+        """
+        分野情報をリスト形式に変換する。
+
+        Args:
+            field_info (str): 分野情報の文字列。
+
+        Returns:
+            List[str]: リスト形式に変換された分野情報。
+        """
+        # "・"や空白で区切られた分野情報をリストに変換
+        fields = re.split(r'[・\s]+', field_info)
+        return [field.strip() for field in fields if field.strip()]
 
 # テストコード
 if __name__ == "__main__":

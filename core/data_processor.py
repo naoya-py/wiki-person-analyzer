@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime
+import re
 from core.scraper import Scraper
 from utils.logger import configure_logging, get_logger
 from config import Config
@@ -35,33 +36,51 @@ class DataProcessor:
                 processed_item = self._extract_and_format_data(infobox_data)
                 logger.debug(f"Processed item: {processed_item}")
 
-                # テキストを取得して両親の情報を抽出
-                sections_data = scraper.extract_text()
-                sections = sections_data.get("sections", [])
-                for section in sections:
-                    if isinstance(section, dict):
-                        # "category_texts"に"生涯"を含むものと、"heading_text"が"生い立ち"または"幼少時"のものを選択
-                        if "生涯" in section.get("category_texts", []) and section.get("heading_text") in ["生い立ち", "幼少時"]:
-                            text = section.get("text", "")
-                            if text:
-                                parents_info = DataExtractor.extract_parents_info(text)
-                                logger.debug(f"Extracted parents info: {parents_info}")
+                # 追加テーブルデータを抽出
+                additional_table_data = scraper.extract_additional_table_data()
+                family_info = []
+                if "家族" in additional_table_data:
+                    family_members = additional_table_data["家族"]
+                    for member in family_members:
+                        match = re.match(r"(.+)\((.+)\)", member)
+                        if match:
+                            name, relation = match.groups()
+                            family_info.append({
+                                '関係': relation,
+                                '氏名': name
+                            })
+                    if '家族構成' not in processed_item or processed_item['家族構成'] is None:
+                        processed_item['家族構成'] = []
+                    processed_item['家族構成'].extend(family_info)
 
-                                # 家族構成に両親の情報を追加
-                                if '家族構成' not in processed_item or processed_item['家族構成'] is None:
-                                    processed_item['家族構成'] = []
+                # 家族情報がない場合のみテキストを取得して両親の情報を抽出
+                if not family_info:
+                    sections_data = scraper.extract_text()
+                    sections = sections_data.get("sections", [])
+                    for section in sections:
+                        if isinstance(section, dict):
+                            # "category_texts"に"生涯"を含むものと、"heading_text"が"生い立ち"または"幼少時"のものを選択
+                            if "生涯" in section.get("category_texts", []) and section.get("heading_text") in ["生い立ち", "幼少時"]:
+                                text = section.get("text", "")
+                                if text:
+                                    parents_info = DataExtractor.extract_parents_info(text)
+                                    logger.debug(f"Extracted parents info: {parents_info}")
 
-                                if parents_info['父']:
-                                    processed_item['家族構成'].append({
-                                        '関係': '父',
-                                        '氏名': parents_info['父']
-                                    })
+                                    # 家族構成に両親の情報を追加
+                                    if '家族構成' not in processed_item or processed_item['家族構成'] is None:
+                                        processed_item['家族構成'] = []
 
-                                if parents_info['母']:
-                                    processed_item['家族構成'].append({
-                                        '関係': '母',
-                                        '氏名': parents_info['母']
-                                    })
+                                    if parents_info['父']:
+                                        processed_item['家族構成'].append({
+                                            '関係': '父',
+                                            '氏名': parents_info['父']
+                                        })
+
+                                    if parents_info['母']:
+                                        processed_item['家族構成'].append({
+                                            '関係': '母',
+                                            '氏名': parents_info['母']
+                                        })
 
                 self.data.append(processed_item)
                 self.logger.info(f"Processed data for {page_title}")
@@ -127,6 +146,12 @@ class DataProcessor:
                 processed_item["国籍"] = nationality_info
                 logger.debug(f"整形された国籍情報: {nationality_info}")
                 value = nationality_info
+            elif key == "分野":
+                logger.debug(f"分野情報: {value}")
+                field_info = DataNormalizer.normalize_field_info(value)
+                processed_item["分野"] = field_info
+                logger.debug(f"整形された分野情報: {field_info}")
+                continue  # '分野' キー自体を追加しないようにする
             processed_item[key] = value
 
         # Calculate age at death

@@ -164,6 +164,44 @@ class Scraper:
             logger.debug(f"ETag と Last-Modified ヘッダーを保存: {self.cache_headers[self.page_title]}")
         return False
 
+    def extract_additional_table_data(self) -> Dict[str, Union[str, List[str]]]:
+        """
+        Wikipedia ページの特定のテーブルデータを抽出する。
+
+        Returns:
+            Dict[str, Union[str, List[str]]]: 抽出されたテーブルデータを格納した辞書。
+        """
+        logger.info("追加テーブルデータ抽出開始")
+        if not self.page_content:
+            logger.error(Config._FETCH_PAGE_DATA_ERROR_MESSAGE)
+            raise ValueError(Config._FETCH_PAGE_DATA_ERROR_MESSAGE)
+
+        self.soup = BeautifulSoup(self.page_content, "lxml")
+        additional_data: Dict[str, Union[str, List[str]]] = {}
+
+        # aria-labelledby属性を使用して特定のdivを抽出
+        divs = self.soup.select(f"div.navbox[aria-labelledby='{self.page_title}']")
+        for div in divs:
+            tables = div.find_all("table")
+            for table in tables:
+                for row in table.find_all("tr"):
+                    th = row.find("th")
+                    if th:
+                        key = th.get_text(strip=True)
+                        td = row.find("td")
+                        if td:
+                            values = [li.get_text(strip=True) for li in td.find_all("li")]
+                            if not values:  # liタグがない場合、他のタグからテキストを抽出
+                                values = td.get_text(separator=" ", strip=True)
+                            additional_data[key] = values
+
+        logger.info("追加テーブルデータ抽出完了")
+        return additional_data
+
+        logger.info("追加テーブルデータ抽出完了")
+        return additional_data
+
+
     # ----------------------- Infobox データ抽出 -----------------------
     def extract_infobox_data(self) -> Dict[str, str]:
         """
@@ -888,6 +926,11 @@ if __name__ == "__main__":
             categories = scraper.extract_categories()
             print("Categories:")
             print(json.dumps(categories, indent=2, ensure_ascii=False))
+            print("\n" + "=" * 50 + "\n")
+
+            additional_table_data = scraper.extract_additional_table_data()
+            print("Additional Table Data:")
+            print(json.dumps(additional_table_data, indent=2, ensure_ascii=False))
             print("\n" + "=" * 50 + "\n")
 
         except ValueError as e:
