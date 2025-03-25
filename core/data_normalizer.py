@@ -184,7 +184,7 @@ class DataNormalizer:
             marriage_dates = re.findall(r'\d{4}', entry)
 
             spouse_dict = {
-                '配偶者名': spouse_name.group(0) if spouse_name else None,
+                '氏名': spouse_name.group(0) if spouse_name else None,
                 '結婚年': int(marriage_dates[0]) if marriage_dates else None,
                 '離婚年': int(marriage_dates[1]) if len(marriage_dates) > 1 else None
             }
@@ -235,7 +235,7 @@ class DataNormalizer:
         return [field.strip() for field in fields if field.strip()]
 
     @staticmethod
-    def normalize_achievements_info(achievements_info: str) -> List[str]:
+    def normalize_achievements_info(achievements_info: str) -> List[Dict[str, Any]]:
         """
         主な業績情報をリスト形式に変換する。
 
@@ -243,13 +243,12 @@ class DataNormalizer:
             achievements_info (str): 主な業績情報の文字列。
 
         Returns:
-            List[str]: リスト形式に変換された主な業績情報。
+            List[Dict[str, Any]]: リスト形式に変換された主な業績情報。
         """
-        # 接続詞の前後の空白を削除
-        achievements_info = re.sub(r'\s+(の|と|が)',r'\1', achievements_info)
-        # 空白で区切られた業績情報をリストに変換
-        achievements = re.split(r'\s+', achievements_info)
-        return [achievement.strip() for achievement in achievements if achievement.strip()]
+        # 正規表現を使用して賞と年を抽出
+        pattern = re.compile(r"(\D+?)\s+(\d{4})年?")
+        achievements_list = [{"賞": match[0].strip(), "年": int(match[1])} for match in pattern.findall(achievements_info)]
+        return achievements_list
 
 
 # テストコード
@@ -280,7 +279,7 @@ if __name__ == "__main__":
         print(result)
 
     achievements_test_case_1 = "放射能 の研究 ラジウム の発見 ポロニウム の発見"
-    achievements_test_case_2 = "一般相対性理論 特殊相対性理論 光電効果 ブラウン運動 質量とエネルギーの等価性 アインシュタイン方程式 ボース分布関数 宇宙定数 ボースアインシュタイン凝縮 EPRパラドックス 古典統一場論"
+    achievements_test_case_2 = "一般相対性理論 特殊相対性理論 光電効果 ブラウン運動 質量とエネルギーの等価性 アインシュタイン方程式 ボース分布 ノーベル物理学賞 1903年 ノーベル化学賞 1911年"
 
     result_1 = DataNormalizer.normalize_achievements_info(achievements_test_case_1)
     result_2 = DataNormalizer.normalize_achievements_info(achievements_test_case_2)

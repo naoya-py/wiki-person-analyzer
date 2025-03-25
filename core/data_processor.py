@@ -128,12 +128,6 @@ class DataProcessor:
                     "出身地_都市": birth_place_info["出身地_都市"]
                 }
                 continue  # '出身地' キー自体を追加しないようにする
-            elif key == "配偶者":
-                logger.debug(f"配偶者情報: {value}")
-                spouse_info = DataNormalizer.normalize_spouse_info(value)
-                processed_item["配偶者"] = spouse_info
-                logger.debug(f"整形された配偶者情報: {spouse_info}")
-                continue  # '配偶者' キー自体を追加しないようにする
             elif key == "子供":
                 logger.debug(f"子供情報: {value}")
                 children_info = DataNormalizer.normalize_children_info(value)
@@ -158,7 +152,21 @@ class DataProcessor:
                 processed_item["主な業績"] = achievements_info
                 logger.debug(f"整形された主な業績情報: {achievements_info}")
                 continue  # '主な業績' キー自体を追加しないようにする
+            elif key == "受賞歴":
+                logger.debug(f"主な受賞歴情報: {value}")
+                awards_info = DataNormalizer.normalize_achievements_info(value)
+                processed_item["受賞歴"] = awards_info
+                logger.debug(f"整形された受賞歴情報: {awards_info}")
+                continue  # '主な受賞歴' キー自体を追加しないようにする
             processed_item[key] = value
+
+        # 配偶者情報から家族構成の氏名に一致する場合に結婚年と離婚年を追加
+        spouse_info = DataNormalizer.normalize_spouse_info(item.get("配偶者", ""))
+        for spouse in spouse_info:
+            for family_member in processed_item.get("家族構成", []):
+                if family_member["配偶者名"] == spouse["氏名"]:
+                    family_member["結婚年"] = spouse["結婚年"]
+                    family_member["離婚年"] = spouse["離婚年"]
 
         # Calculate age at death
         if "生年月日" in birth_date_info and "没年月日" in death_date_info:

@@ -12,6 +12,7 @@ from typing import Any, List, Dict, Union, Optional
 from utils.full_width_converter import FullWidthConverter
 from core.data_saver import DataSaver
 from core.data_aggregator import DataAggregator
+from result import Result, Ok, Err
 
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
 logger = get_logger(__name__)
@@ -59,15 +60,15 @@ class Scraper:
         self.excluded_section_keywords: List[str] = Config.EXCLUDED_SECTION_KEYWORDS
 
     # ----------------------- データ取得とキャッシュ処理 -----------------------
-    def fetch_page_data(self):
+    def fetch_page_data(self) -> Result[None, str]:
         """
         Wikipedia API からページデータを取得し、レスポンスヘッダーを処理する。
 
         条件付きリクエストヘッダー (If-None-Match, If-Modified-Since) を使用して、キャッシュの効率を向上させる。
         API レスポンスが 304 Not Modified の場合、キャッシュされたデータが最新であることを意味し、処理を中断する。
 
-        Raises:
-            ValueError: リクエストエラーまたは API エラーが発生した場合。
+        Returns:
+            Result[None, str]: 成功時は Ok(None)、失敗時は Err(エラーメッセージ)。
         """
         logger.info(f"ページデータ取得開始: {self.page_title}")
         headers = {}
@@ -92,31 +93,33 @@ class Scraper:
             response.raise_for_status()
 
             if self._process_response_headers(response):
-                return
+                return Ok(None)
 
             data = response.json()
 
             if "error" in data:
                 error_info = data["error"]["info"]
                 logger.error(f"Wikipedia API エラー: {error_info}")
-                raise ValueError(f"Wikipedia API エラー: {error_info}")
+                return Err(f"Wikipedia API エラー: {error_info}")
 
             if "parse" not in data:
                 logger.error(f"ページが見つかりません: {self.page_title}")
-                raise ValueError(f"ページが見つかりません: {self.page_title}")
+                return Err(f"ページが見つかりません: {self.page_title}")
 
             self.page_id = data["parse"]["pageid"]
             self.page_content = data["parse"]["text"]["*"]
             logger.info(f"ページデータを取得しました: page_id={self.page_id}")
 
+            return Ok(None)
+
         except requests.exceptions.RequestException as e:
             logger.error(f"リクエストエラー: {e}")
             self.page_id = None
-            raise ValueError(f"リクエストエラー: {e}") from e
+            return Err(f"リクエストエラー: {e}")
         except ValueError as e:
             logger.error(f"ValueError: {e}")
             self.page_id = None
-            raise
+            return Err(str(e))
 
     def _set_cache_headers(self, headers: Dict[str, str]):
         """
@@ -155,7 +158,7 @@ class Scraper:
                 self.cache_headers[self.page_title]['etag'] = etag
             if last_modified:
                 self.cache_headers[self.page_title]['last-modified'] = last_modified
-            logger.debug(f"ETag と Last-Modified ヘッダーを保存: {self.cache_headers[self.page_title]}")
+            logger.info(f"ETag と Last-Modified ヘッダーを保存: {self.cache_headers[self.page_title]}")
         return False
 
     def extract_additional_table_data(self) -> Dict[str, Union[str, List[str]]]:
@@ -274,7 +277,6 @@ class Scraper:
         Returns:
             str: 処理後のテキスト。
         """
-        logger.debug("_extract_text_from_cell メソッド開始")
 
         for tag in cell.find_all(Config.UNNECESSARY_TAGS):
             tag.decompose()
@@ -298,7 +300,6 @@ class Scraper:
         for word in self.exclude_words:
             text = text.replace(word, "")
 
-        logger.debug(f"_extract_text_from_cell メソッド完了: 処理後のテキスト: {text}")
         return text
 
     # ----------------------- 画像データ抽出 -----------------------
@@ -352,7 +353,6 @@ class Scraper:
             response = self.session.get(self.site_url, params=params)
             response.raise_for_status()
             data = response.json()
-            logger.debug(f"カテゴリ取得 API レスポンス: {data}")
 
             categories: List[str] = []
             pages = data.get("query", {}).get("pages", {})
@@ -435,7 +435,6 @@ class Scraper:
         Args:
             soup (BeautifulSoup): BeautifulSoup オブジェクト。
         """
-        logger.debug("不要要素削除開始")
 
         # 指定されたタグを削除
         for tag_name in Config.UNNECESSARY_TAGS:
@@ -451,14 +450,12 @@ class Scraper:
             for tag in soup.find_all(class_=class_name):
                 tag.decompose()
 
-        logger.debug("不要要素削除完了")
 
     def _extract_headings_and_body(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
         BeautifulSoup オブジェクトから階層的な見出し (h2, h3, h4) と本文を抽出する。
         テキスト分析しやすいフラットなリスト構造で出力する。
         """
-        logger.debug("フラットなリスト構造での見出しと本文抽出開始 (カテゴリテキスト対応)")
         sections: List[Dict[str, Any]] = []
         h2_heading_divs = soup.find_all('div', class_='mw-heading mw-heading2')
 
@@ -470,7 +467,6 @@ class Scraper:
                 if h3_sections:
                     sections.extend(h3_sections)
 
-        logger.debug("フラットなリスト構造での見出しと本文抽出完了 (カテゴリテキスト対応)")
         return sections
 
     def _extract_h3_sections(self, h2_heading_div: Tag) -> List[Dict[str, Any]]:
@@ -617,7 +613,6 @@ class Scraper:
             "heading_text": heading_text,
             "text": text_content
         }
-        logger.debug(f"デバッグ type of section_data before return: {type(section_data)}")
         return section_data
 
     def _clean_text(self, text: str) -> str:
@@ -719,24 +714,19 @@ class Scraper:
         Returns:
             List[Dict[str, Any]]: 指定されたキーワードを含まないセクションデータのリスト。
         """
-        logger.debug("不要セクション削除開始")
         excluded_section_keywords = self.excluded_section_keywords
         processed_sections: List[Dict[str, Any]] = []
 
         for section in sections:
-            logger.debug(f"デバッグ section data in _remove_excluded_sections: {section}")
-            logger.debug(f"デバッグ type of section['category_texts']: {type(section['category_texts'])}")
             heading_text_list = section["category_texts"][-1:] if section["category_texts"] else [
                 section["heading_text"]]
             heading_text = heading_text_list[0] if heading_text_list else ""
 
             if any(keyword in heading_text for keyword in excluded_section_keywords):
-                logger.debug(f"セクション '{heading_text}' を排除")
                 continue
 
             processed_sections.append(section)
 
-        logger.debug("不要セクション削除完了")
         return processed_sections
 
     # ----------------------- テキストの後処理 -----------------------
@@ -751,12 +741,10 @@ class Scraper:
         Returns:
             List[Dict[str, Any]]: 後処理済みのセクションデータのリスト。
         """
-        logger.debug("テキスト後処理開始 (カテゴリテキスト対応)")
         processed_sections: List[Dict[str, Any]] = []
         for section in sections:
             processed_section = self._process_section_text_for_category(section)
             processed_sections.append(processed_section)
-        logger.debug("テキスト後処理完了 (カテゴリテキスト対応)")
         return processed_sections
 
     def _process_section_text_for_category(self, section: Dict[str, Any]) -> Dict[str, Any]:
@@ -836,12 +824,10 @@ class Scraper:
         Returns:
             List[Dict[str, Any]]: 不要な単語が削除されたセクションデータのリスト。
         """
-        logger.debug("不要ワード削除開始 (カテゴリテキスト対応)")
         processed_sections: List[Dict[str, Any]] = []
         for section in sections:
             processed_section = self._process_exclude_words_in_section_for_category(section)
             processed_sections.append(processed_section)
-        logger.debug("不要ワード削除完了 (カテゴリテキスト対応)")
         return processed_sections
 
     def _process_exclude_words_in_section_for_category(self, section: Dict[str, Any]) -> Dict[str, Any]:

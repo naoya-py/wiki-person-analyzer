@@ -12,7 +12,7 @@ class Config:
     LOG_RETENTION = 5
     LOG_COMPRESSION = "zip"
 
-    EXCLUDE_WORDS = ["英語版", "Emc"]
+    EXCLUDE_WORDS = ["英語版", "Emc", "(英語版)"]
 
     EXCLUDED_SECTION_KEYWORDS = [
         "著作",
