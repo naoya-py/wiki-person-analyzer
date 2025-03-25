@@ -11,6 +11,7 @@ from utils.logger import configure_logging, get_logger
 from typing import Any, List, Dict, Union, Optional
 from utils.full_width_converter import FullWidthConverter
 from core.data_saver import DataSaver
+from core.data_aggregator import DataAggregator
 
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
 logger = get_logger(__name__)
@@ -88,17 +89,12 @@ class Scraper:
             else:
                 logger.info(f"API から新規にデータを取得: {self.page_title}")
 
-            logger.debug(f"API リクエスト URL: {response.request.url}")
-            logger.debug(f"API リクエストパラメータ: {response.request.path_url}")
-            logger.debug(f"API リクエストヘッダー: {response.request.headers}")
-
             response.raise_for_status()
 
             if self._process_response_headers(response):
                 return
 
             data = response.json()
-            logger.debug(f"API レスポンス: {json.dumps(data, indent=2, ensure_ascii=False)}")
 
             if "error" in data:
                 error_info = data["error"]["info"]
@@ -150,8 +146,6 @@ class Scraper:
             logger.info(f"304 Not Modified: キャッシュデータを使用: {self.page_title}")
             return True
 
-        logger.debug(f"API レスポンスステータスコード: {response.status_code}")
-        logger.debug(f"API レスポンスヘッダー: {response.headers}")
 
         etag = response.headers.get('ETag')
         last_modified = response.headers.get('Last-Modified')
@@ -299,6 +293,10 @@ class Scraper:
         pattern = r"[^\w\s\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff.,?!-]"
         text = re.sub(pattern, "", text)
         text = FullWidthConverter.convert_to_fullwidth(text)  # 全角に統一
+
+        # 除外ワードを削除
+        for word in self.exclude_words:
+            text = text.replace(word, "")
 
         logger.debug(f"_extract_text_from_cell メソッド完了: 処理後のテキスト: {text}")
         return text
@@ -902,11 +900,15 @@ class Scraper:
 
 # ----------------------- メイン処理 (Example Usage) -----------------------
 if __name__ == "__main__":
+    from core.data_aggregator import DataAggregator
+
     page_titles = [
         "アルベルト・アインシュタイン",
         "マリ・キュリー",
         "スティーブ・ジョブズ"
     ]
+
+    DataAggregator.save_combined_data(page_titles)
 
     for page_title in page_titles:
         scraper = Scraper(page_title=page_title)

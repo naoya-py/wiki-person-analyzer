@@ -12,7 +12,7 @@ class Config:
     LOG_RETENTION = 5
     LOG_COMPRESSION = "zip"
 
-    EXCLUDE_WORDS = ["Null"]
+    EXCLUDE_WORDS = ["英語版", "Emc"]
 
     EXCLUDED_SECTION_KEYWORDS = [
         "著作",
@@ -48,7 +48,6 @@ class Config:
         "家族構成",
         "配偶者",
         "子供",
-        "親",
         "分野",
         "主な業績",
         "受賞歴",
@@ -72,9 +71,8 @@ class Config:
         "所属": ["affiliation"],
         "配偶者": ["spouse", "夫", "妻", "配偶者"],
         "子供": ["children", "子女", "子供"],
-        "親": ["parents"],
         "分野": ["field", "研究分野", "専門"],
-        "主な業績": ["notable_works", "代表作"],
+        "主な業績": ["notable_works", "代表作", "主な業績", "著名な実績"],
         "受賞歴": ["awards", "受賞", "表彰", "主な受賞歴"],
         "活動期間": ["active_periods", "活動期間"],
         "称号": ["honorific_title", "肩書", "役職"],

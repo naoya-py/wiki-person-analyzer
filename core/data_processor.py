@@ -152,6 +152,12 @@ class DataProcessor:
                 processed_item["分野"] = field_info
                 logger.debug(f"整形された分野情報: {field_info}")
                 continue  # '分野' キー自体を追加しないようにする
+            elif key == "主な業績":
+                logger.debug(f"主な業績情報: {value}")
+                achievements_info = DataNormalizer.normalize_achievements_info(value)
+                processed_item["主な業績"] = achievements_info
+                logger.debug(f"整形された主な業績情報: {achievements_info}")
+                continue  # '主な業績' キー自体を追加しないようにする
             processed_item[key] = value
 
         # Calculate age at death
