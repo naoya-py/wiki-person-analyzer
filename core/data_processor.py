@@ -160,14 +160,6 @@ class DataProcessor:
                 continue  # '主な受賞歴' キー自体を追加しないようにする
             processed_item[key] = value
 
-        # 配偶者情報から家族構成の氏名に一致する場合に結婚年と離婚年を追加
-        spouse_info = DataNormalizer.normalize_spouse_info(item.get("配偶者", ""))
-        for spouse in spouse_info:
-            for family_member in processed_item.get("家族構成", []):
-                if family_member["配偶者名"] == spouse["氏名"]:
-                    family_member["結婚年"] = spouse["結婚年"]
-                    family_member["離婚年"] = spouse["離婚年"]
-
         # Calculate age at death
         if "生年月日" in birth_date_info and "没年月日" in death_date_info:
             birth_date = birth_date_info["生年月日"]["全体"]

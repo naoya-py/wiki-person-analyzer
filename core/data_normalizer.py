@@ -170,30 +170,6 @@ class DataNormalizer:
         return normalized_nationality
 
     @staticmethod
-    def normalize_spouse_info(spouse_info: str) -> List[Dict[str, Optional[Any]]]:
-        """
-        配偶者情報を分割し、名前と期間を抽出するメソッド。
-        """
-        logger.debug(f"配偶者情報: {spouse_info}")
-
-        spouse_entries = re.split(r'\s+(?=\D)', spouse_info)
-        normalized_spouses: List[Dict[str, Optional[Any]]] = []
-
-        for entry in spouse_entries:
-            spouse_name = re.search(r'^[^\d\s]+', entry)
-            marriage_dates = re.findall(r'\d{4}', entry)
-
-            spouse_dict = {
-                '氏名': spouse_name.group(0) if spouse_name else None,
-                '結婚年': int(marriage_dates[0]) if marriage_dates else None,
-                '離婚年': int(marriage_dates[1]) if len(marriage_dates) > 1 else None
-            }
-            normalized_spouses.append(spouse_dict)
-
-        logger.debug(f"整形された配偶者情報: {normalized_spouses}")
-        return normalized_spouses
-
-    @staticmethod
     def normalize_children_info(children_info: str) -> List[Dict[str, Optional[Any]]]:
         """
         子供情報を分割し、名前と年号を抽出するメソッド。

@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 class DataAggregator:
     @staticmethod
     def save_combined_data(page_titles: List[str], output_filename: str = "combined_data.json",
-                           directory: str = "C:/Users/pearj/Desktop/Pycharm/biography_analyzer/data/raw"):
+                            directory: str = "C:/Users/pearj/Desktop/Pycharm/biography_analyzer/data/raw"):
         """
         複数のWikipediaページから抽出したデータを1つのJSONファイルにまとめて保存する。
 

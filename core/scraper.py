@@ -13,6 +13,7 @@ from utils.full_width_converter import FullWidthConverter
 from core.data_saver import DataSaver
 from core.data_aggregator import DataAggregator
 from result import Result, Ok, Err
+from core.family_info_manager import FamilyInfoManager
 
 configure_logging(level=Config.DEFAULT_LOG_LEVEL)
 logger = get_logger(__name__)
